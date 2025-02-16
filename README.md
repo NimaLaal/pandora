@@ -1,6 +1,4 @@
-# Project Title
-
-PANDORA
+# PANDORA
 
 ## Description
 
