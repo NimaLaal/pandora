@@ -21,7 +21,7 @@ setup(
                     'corner>=2.2.2',
                     'Cython>=0.29.36',
                     'enterprise_extensions>=2.4.3',
-                    'enterprise_pulsar>=3.3.4.dev4+g5ef5ff4',
+                    'enterprise_pulsar>=3.3.4',
                     'h5py>=3.9.0',
                     'jax>=0.4.19',
                     'matplotlib>=3.10.0',
