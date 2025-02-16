@@ -14,7 +14,7 @@ setup(
     description=('Software to speedup PTA likelihood calculation'),
     author='Nima Laal',
     author_email='nima.laal@gmail.com',
-    packages=['pta-pandora'],
+    packages=['pandora'],
     zip_safe=False,
     install_requires=[
                     'cloudpickle>=3.1.1',
