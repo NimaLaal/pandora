@@ -2,7 +2,7 @@
 
 ## Description
 
-Painlessly Attempting a Numerical Democratization Of Residual Analysis (PANDORA) is a project aimed at ...
+Painlessly Attempting a Numerical Democratization Of Residual Analysis (PANDORA)
 
 ## Getting Started
 
