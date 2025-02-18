@@ -4,6 +4,7 @@ import torch
 import torch.utils.dlpack as td
 import jax.numpy as jnp
 import torch.utils.dlpack as torchdlpack
+
 class NFastroinference(object):
     """
     To use a normalizing flow pyro object as a distribution in numpyro

@@ -1,5 +1,5 @@
 import numpy as np
-import GWBFunctions
+from pandora import GWBFunctions
 import inspect
 import jax.numpy as jnp
 import jax
