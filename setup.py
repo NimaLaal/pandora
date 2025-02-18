@@ -24,7 +24,6 @@ setup(
                     "enterprise_extensions>=2.4.2,<3.0.0",
                     'h5py>=3.9.0',
                     'jax>=0.4.19',
-                    'matplotlib>=3.10.0',
                     'numpy>=2.2.3',
                     'ptmcmcsampler>=2.1.1',
                     'pyro_ppl>=1.8.6',
