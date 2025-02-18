@@ -16,6 +16,7 @@ from jax.dlpack import to_dlpack, from_dlpack
 # jax.config.update('jax_platform_name', 'cpu')
 # jax.config.update("jax_enable_x64", False)
 
+
 class MultiPulsarModel(object):
     """
     A class to calculate likelihood based on given IRN + GWB models (no deterministic signal)
@@ -70,9 +71,15 @@ class MultiPulsarModel(object):
         self.kmax = 2 * self.int_bins
         self.k_idx = jnp.arange(0, self.kmax)
         self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
-        self.lower_prior_lim_all = self.jax_to_numpy(self.run_type_object.lower_prior_lim_all)
-        self.upper_prior_lim_all = self.jax_to_numpy(self.run_type_object.upper_prior_lim_all)
-        self.num_gwb_params = len(self.run_type_object.lower_prior_lim_all[2*self.Npulsars:])
+        self.lower_prior_lim_all = self.jax_to_numpy(
+            self.run_type_object.lower_prior_lim_all
+        )
+        self.upper_prior_lim_all = self.jax_to_numpy(
+            self.run_type_object.upper_prior_lim_all
+        )
+        self.num_gwb_params = len(
+            self.run_type_object.lower_prior_lim_all[2 * self.Npulsars :]
+        )
         self.num_IR_params = 2 * self.Npulsars
 
         if not TNr and not TNT:
@@ -122,7 +129,7 @@ class MultiPulsarModel(object):
         ##############Make TNT More Stable:
         if matrix_stabilization:
             delta = 1e-6
-            print(f'The delta is {delta}')
+            print(f"The delta is {delta}")
             print(
                 f"Condition number of the TNT matrix before stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
             )
@@ -140,30 +147,32 @@ class MultiPulsarModel(object):
             )
 
     ##################################################################
-    '''
+    """
     Some convenient functions for moving between JAX and Numpy
     depending on the device (dlpack cannot copy between CPU and GPU.)
     dlpack simply gives you a `view` of the array.
-    '''
+    """
+
     def jax_to_numpy(self, jax_array):
-        if self.device == 'cpu':
+        if self.device == "cpu":
             return np.from_dlpack(jax_array)
         else:
             return np.array(jax_array)
-        
+
     def numpy_to_jax(self, numpy_array):
-        if self.device == 'cpu':
+        if self.device == "cpu":
             return jax.dlpack.from_dlpack(numpy_array)
         else:
             return jnp.array(numpy_array)
-        
+
     def lnliklihood_wrapper_numpy(self, xs):
         xs_jax = self.numpy_to_jax(xs)
-        return self.jax_to_numpy(self.get_lnliklihood(xs_jax)) 
+        return self.jax_to_numpy(self.get_lnliklihood(xs_jax))
 
     def lnliklihood_LU_wrapper_numpy(self, xs):
         xs_jax = self.numpy_to_jax(xs)
-        return self.jax_to_numpy(self.get_lnliklihood_LU(xs_jax))   
+        return self.jax_to_numpy(self.get_lnliklihood_LU(xs_jax))
+
     ##################################################################
 
     @partial(jax.jit, static_argnums=(0,))
@@ -207,8 +216,10 @@ class MultiPulsarModel(object):
         :return: the mean of the Fourier coefficients as well as the log-determinant of the `Sigma` matrix.
         """
         cf = jsp.linalg.lu_factor(self._TNT + self.to_ent_phiinv(phiinv))
-        return jsp.linalg.lu_solve(cf, self._TNr), jnp.log(jnp.abs(cf[0].diagonal())).sum()
-    
+        return jsp.linalg.lu_solve(cf, self._TNr), jnp.log(
+            jnp.abs(cf[0].diagonal())
+        ).sum()
+
     @partial(jax.jit, static_argnums=(0,))
     def get_lnliklihood(self, xs):
         """
@@ -251,7 +262,7 @@ class MultiPulsarModel(object):
         phiinv_dense = jnp.repeat(jsp.linalg.cho_solve(cp, self._eye), 2, axis=0)
         expval, logdet_sigma = self.get_mean_LU(phiinv_dense)
         return 0.5 * (jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi)
-    
+
     @partial(jax.jit, static_argnums=(0,))
     def get_lnliklihood_using_phi(self, phi):
         """
@@ -270,7 +281,7 @@ class MultiPulsarModel(object):
         # (2*n_freq, n_pulsar, n_pulsar).
         phiinv_dense = jnp.repeat(jsp.linalg.cho_solve(cp, self._eye), 2, axis=0)
         expval, logdet_sigma = self.get_mean(phiinv_dense)
-        return 0.5 * (jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi) 
+        return 0.5 * (jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi)
 
     def get_lnprior(self, xs):
         """
@@ -297,7 +308,7 @@ class MultiPulsarModel(object):
         else:
             return -np.inf
 
-    def make_initial_guess_numpy(self, seed = None):
+    def make_initial_guess_numpy(self, seed=None):
         """
         Generates an initial guess using uniform random values within
         specified limits.
@@ -313,8 +324,17 @@ class MultiPulsarModel(object):
         else:
             rng = np.random.default_rng()
         return rng.uniform(self.lower_prior_lim_all, self.upper_prior_lim_all)
-    
-    def sample(self, x0, niter, savedir, resume=True, seed = None, sample_enterprise = False, LU_decomp = False):
+
+    def sample(
+        self,
+        x0,
+        niter,
+        savedir,
+        resume=True,
+        seed=None,
+        sample_enterprise=False,
+        LU_decomp=False,
+    ):
         """
         A function to perform the sampling using PTMCMC
 
@@ -323,7 +343,7 @@ class MultiPulsarModel(object):
         :param savedir: the directory to save the chains
         :param resume: do you want to resume from a saved chain?
         :param seed: rng seed!
-        :param sample_enterprise: do you want to sample the internal pta object? 
+        :param sample_enterprise: do you want to sample the internal pta object?
         :param LU_decomp: do you want to use the PLU decomposed likelihood?
         """
         if not np.any(x0):
@@ -331,11 +351,7 @@ class MultiPulsarModel(object):
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
         groups = [list(np.arange(0, ndim))]
-        nonIR_idxs = np.array(
-            range(
-                self.num_IR_params, x0.shape[0]
-            )
-        )
+        nonIR_idxs = np.array(range(self.num_IR_params, x0.shape[0]))
         [groups.append(nonIR_idxs) for ii in range(2)]
 
         if not sample_enterprise:
@@ -350,7 +366,7 @@ class MultiPulsarModel(object):
                     resume=resume,
                 )
             else:
-                print('***************Using LU DECOMP*****************')
+                print("***************Using LU DECOMP*****************")
                 sampler = ptmcmc(
                     ndim,
                     self.lnliklihood_LU_wrapper_numpy,
@@ -359,7 +375,7 @@ class MultiPulsarModel(object):
                     groups=groups,
                     outDir=savedir,
                     resume=resume,
-                )                
+                )
         else:
             sampler = ptmcmc(
                 ndim,
@@ -374,7 +390,7 @@ class MultiPulsarModel(object):
         sampler.addProposalToCycle(self.draw_from_prior, 10)
         sampler.addProposalToCycle(self.draw_from_red_prior, 10)
         sampler.addProposalToCycle(self.draw_from_nonIR_prior, 10)
-        #TO DO: add proposal for orf parameters in case they exist in the model.
+        # TO DO: add proposal for orf parameters in case they exist in the model.
 
         sampler.sample(
             x0,
@@ -426,12 +442,13 @@ class MultiPulsarModel(object):
         q[param_idx] = self.make_initial_guess_numpy()[param_idx]
         return q, float(lqxy)
 
+
 class AstroInferenceModel(object):
     """
     A class to calculate likelihood based on a given IRN + GWB model (no deterministic signal) as well as as a normalizing flow astroemulator
 
     :param nf_dist: the normalizing flow object
-    :param num_astro_params: the number of astro parameters 
+    :param num_astro_params: the number of astro parameters
     :param astr_prior_lower_lim: the lower bound for the astro parameters
     :param astr_prior_upper_lim: the upper bound for the astro parameters
     :param astro_additional_prior_func: if you want non-uniform prior on the astro parameters, supply a numpy-compatible function to calculate
@@ -482,7 +499,9 @@ class AstroInferenceModel(object):
         self.astro_additional_prior_func = astro_additional_prior_func
         self.num_astro_params = num_astro_params
         self.num_IR_params = 2 * self.Npulsars
-        self.num_gwb_params = len(self.run_type_object.lower_prior_lim_all[2*self.Npulsars:])
+        self.num_gwb_params = len(
+            self.run_type_object.lower_prior_lim_all[2 * self.Npulsars :]
+        )
         self.Tspan = run_type_object.Tspan
         self.noise_dict = noise_dict
         self.renorm_const = run_type_object.renorm_const
@@ -554,7 +573,7 @@ class AstroInferenceModel(object):
         ##############Make TNT More Stable:
         if matrix_stabilization:
             delta = 1e-6
-            print(f'The delta is {delta}')
+            print(f"The delta is {delta}")
             print(
                 f"Condition number of the TNT matrix before stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
             )
@@ -619,7 +638,9 @@ class AstroInferenceModel(object):
         # (2*n_freq, n_pulsar, n_pulsar).
         phiinv_dense = jnp.repeat(jsp.linalg.cho_solve(cp, self._eye), 2, axis=0)
         expval, logdet_sigma = self.get_mean(phiinv_dense)
-        return 0.5 * (jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi), psd_common
+        return 0.5 * (
+            jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi
+        ), psd_common
 
     def get_lnliklihood(self, xs):
         """
@@ -629,10 +650,12 @@ class AstroInferenceModel(object):
 
         :param: xs: flattened array of model paraemters (`xs`)
         """
-        astro_params = xs[-self.num_astro_params:]
-        xs_non_astro = jnp.array(xs[:-self.num_astro_params])
+        astro_params = xs[-self.num_astro_params :]
+        xs_non_astro = jnp.array(xs[: -self.num_astro_params])
         lik0, psd_common = self.get_lnliklihood_non_astro(xs_non_astro)
-        half_common_log10_rho = np.array(0.5  * jnp.log10(psd_common.T)) - self.log_offset
+        half_common_log10_rho = (
+            np.array(0.5 * jnp.log10(psd_common.T)) - self.log_offset
+        )
         lik1 = self.nf_dist.log_prob(half_common_log10_rho, astro_params)
         return np.array(lik0) + lik1 + self.astro_additional_prior_func(astro_params)
 
@@ -651,7 +674,7 @@ class AstroInferenceModel(object):
         else:
             return -np.inf
 
-    def make_initial_guess(self, seed = None):
+    def make_initial_guess(self, seed=None):
         """
         Generates an initial guess using uniform random values within
         specified limits.
@@ -682,11 +705,7 @@ class AstroInferenceModel(object):
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
         groups = [list(np.arange(0, ndim))]
-        nonIR_idxs = np.array(
-            range(
-                self.num_IR_params, x0.shape[0]
-            )
-        )
+        nonIR_idxs = np.array(range(self.num_IR_params, x0.shape[0]))
         [groups.append(nonIR_idxs) for ii in range(2)]
 
         sampler = ptmcmc(
@@ -736,10 +755,10 @@ class AstroInferenceModel(object):
         lqxy = 0
 
         # randomly choose parameter
-        param_idx = random.randint(0, 2*self.Npulsars - 1)
+        param_idx = random.randint(0, 2 * self.Npulsars - 1)
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
-    
+
     def draw_from_nonIR_prior(self, x, iter, beta):
         """Prior draw.
 
@@ -750,10 +769,10 @@ class AstroInferenceModel(object):
         lqxy = 0
 
         # randomly choose parameter
-        param_idx = random.randint(2*self.Npulsars, x.shape[0] - 1)
+        param_idx = random.randint(2 * self.Npulsars, x.shape[0] - 1)
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
-    
+
     def draw_from_astro_prior(self, x, iter, beta):
         """Prior draw.
 
@@ -764,10 +783,13 @@ class AstroInferenceModel(object):
         lqxy = 0
 
         # randomly choose parameter
-        param_idx = random.randint(-self.num_astro_params-self.crn_bins,-self.num_astro_params)
+        param_idx = random.randint(
+            -self.num_astro_params - self.crn_bins, -self.num_astro_params
+        )
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
-    
+
+
 class TwoModelHyperModel(object):
     """
     A class to perform a product-sapce sampling for two competing models.
@@ -780,7 +802,7 @@ class TwoModelHyperModel(object):
     Nima Laal (02/12/2025)
     """
 
-    def __init__(self, model1, model2, device = 'cuda'):
+    def __init__(self, model1, model2, device="cuda"):
         self.model1 = model1
         self.model2 = model2
         self.device = device
@@ -792,45 +814,47 @@ class TwoModelHyperModel(object):
         self.lower_prior_lim_all = jnp.concatenate(
             (
                 model1.run_type_object.lower_prior_lim_all,
-                model2.run_type_object.lower_prior_lim_all[self.model2.num_IR_params:],
+                model2.run_type_object.lower_prior_lim_all[self.model2.num_IR_params :],
                 jnp.array([0.0]),
             )
         )
         self.upper_prior_lim_all = jnp.concatenate(
             (
                 model1.run_type_object.upper_prior_lim_all,
-                model2.run_type_object.upper_prior_lim_all[self.model2.num_IR_params:],
+                model2.run_type_object.upper_prior_lim_all[self.model2.num_IR_params :],
                 jnp.array([1.0]),
             )
         )
 
     ##################################################################
-    '''
+    """
     Some convenient functions for moving between JAX and Numpy
     depending on the device (dlpack cannot copy between CPU and GPU.)
     dlpack simply gives you a `view` of the array.
-    '''
+    """
+
     def jax_to_numpy(self, jax_array):
-        if self.device == 'cpu':
+        if self.device == "cpu":
             return np.from_dlpack(jax_array)
         else:
             return np.array(jax_array)
-        
+
     def numpy_to_jax(self, numpy_array):
-        if self.device == 'cpu':
+        if self.device == "cpu":
             return jax.dlpack.from_dlpack(numpy_array)
         else:
             return jnp.array(numpy_array)
-        
+
     def lnliklihood_wrapper_numpy(self, xs):
         xs_jax = self.numpy_to_jax(xs)
-        return self.jax_to_numpy(self.get_lnliklihood(xs_jax)) 
+        return self.jax_to_numpy(self.get_lnliklihood(xs_jax))
 
     def lnprior_wrapper_numpy(self, xs):
         xs_jax = self.numpy_to_jax(xs)
-        return self.jax_to_numpy(self.get_lnprior(xs_jax))   
+        return self.jax_to_numpy(self.get_lnprior(xs_jax))
+
     ##################################################################
-    
+
     def x_to_x1_indices(self):
         """
         Returns an array of indices for different parameters in model 1.
@@ -840,7 +864,10 @@ class TwoModelHyperModel(object):
         """
         IRN_idxs = jnp.array(range(0, self.num_IR_params), dtype=int)
         gwb_idxs = jnp.array(
-            range(self.model1.num_IR_params, self.model1.num_IR_params + self.model1.num_gwb_params),
+            range(
+                self.model1.num_IR_params,
+                self.model1.num_IR_params + self.model1.num_gwb_params,
+            ),
             dtype=int,
         )
         hm_idxs = jnp.concatenate((IRN_idxs, gwb_idxs))
@@ -857,7 +884,9 @@ class TwoModelHyperModel(object):
         gwb_idxs = jnp.array(
             range(
                 self.model1.num_IR_params + self.model1.num_gwb_params,
-                self.model1.num_IR_params + self.model1.num_gwb_params + self.model2.num_gwb_params,
+                self.model1.num_IR_params
+                + self.model1.num_gwb_params
+                + self.model2.num_gwb_params,
             ),
             dtype=int,
         )
@@ -872,7 +901,7 @@ class TwoModelHyperModel(object):
         cached.
         """
         return (self.x_to_x1_indices(), self.x_to_x2_indices())
-    
+
     def make_initial_guess_jax(self, key):
         """
         Generates an initial guess using uniform random values within
@@ -892,7 +921,7 @@ class TwoModelHyperModel(object):
         ]
         nmodel = jr.uniform(key, shape=(1,), minval=0, maxval=1)
         return jnp.concatenate((x0_0, x0_1, nmodel))
-        
+
     def get_lnliklihood(self, xs):
         """
         Calculates the log-likelihood of a two-model HM run
@@ -908,7 +937,7 @@ class TwoModelHyperModel(object):
             xs[idxs],
         )
 
-    def make_initial_guess(self, seed = None):
+    def make_initial_guess(self, seed=None):
         """
         Generates an initial guess using uniform random values within
         specified limits.
@@ -923,9 +952,8 @@ class TwoModelHyperModel(object):
             rng = np.random.default_rng(seed)
         else:
             rng = np.random.default_rng()
-        return rng.uniform(self.lower_prior_lim_all, 
-                           self.upper_prior_lim_all)
-    
+        return rng.uniform(self.lower_prior_lim_all, self.upper_prior_lim_all)
+
     @partial(jax.jit, static_argnums=(0,))
     def get_lnprior(self, xs):
         """
@@ -958,22 +986,18 @@ class TwoModelHyperModel(object):
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
         groups = [list(np.arange(0, ndim))]
-        nonIR_idxs = np.array(
-            range(
-                self.model1.num_IR_params, x0.shape[0]
-            )
-        )
+        nonIR_idxs = np.array(range(self.model1.num_IR_params, x0.shape[0]))
         [groups.append(nonIR_idxs) for ii in range(2)]
 
         sampler = ptmcmc(
-                ndim,
-                self.lnliklihood_wrapper_numpy,
-                self.lnprior_wrapper_numpy,
-                cov,
-                groups=groups,
-                outDir=savedir,
-                resume=resume,
-            )
+            ndim,
+            self.lnliklihood_wrapper_numpy,
+            self.lnprior_wrapper_numpy,
+            cov,
+            groups=groups,
+            outDir=savedir,
+            resume=resume,
+        )
 
         sampler.addProposalToCycle(self.draw_from_prior, 10)
         sampler.addProposalToCycle(self.draw_from_red_prior, 10)
@@ -1046,7 +1070,7 @@ class TwoModelHyperModel(object):
         param_idx = random.randint(st, st + self.model2.num_gwb_params - 1)
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
-    
+
     def draw_from_nmodel(self, x, iter, beta):
         """Prior draw.
 
@@ -1055,8 +1079,9 @@ class TwoModelHyperModel(object):
 
         q = x.copy()
         lqxy = 0
-        q[-1] = random.uniform(a = 0, b = 1)
+        q[-1] = random.uniform(a=0, b=1)
         return q, float(lqxy)
+
 
 class TwoAstroModelHyperModel(object):
     """
@@ -1069,7 +1094,7 @@ class TwoAstroModelHyperModel(object):
     Nima Laal (02/12/2025)
     """
 
-    def __init__(self, model1, model2, device = 'cuda'):
+    def __init__(self, model1, model2, device="cuda"):
         self.model1 = model1
         self.model2 = model2
         self.device = device
@@ -1081,14 +1106,14 @@ class TwoAstroModelHyperModel(object):
         self.lower_prior_lim_all = np.concatenate(
             (
                 model1.lower_prior_lim_all,
-                model2.lower_prior_lim_all[self.model2.num_IR_params:],
+                model2.lower_prior_lim_all[self.model2.num_IR_params :],
                 np.array([0.0]),
             )
         )
         self.upper_prior_lim_all = np.concatenate(
             (
                 model1.upper_prior_lim_all,
-                model2.upper_prior_lim_all[self.model2.num_IR_params:],
+                model2.upper_prior_lim_all[self.model2.num_IR_params :],
                 np.array([1.0]),
             )
         )
@@ -1102,7 +1127,12 @@ class TwoAstroModelHyperModel(object):
         """
         IRN_idxs = np.array(range(0, self.model1.num_IR_params), dtype=int)
         nonIR_idxs = np.array(
-            range(self.model1.num_IR_params, self.model1.num_IR_params + self.model1.num_gwb_params + self.model1.num_astro_params),
+            range(
+                self.model1.num_IR_params,
+                self.model1.num_IR_params
+                + self.model1.num_gwb_params
+                + self.model1.num_astro_params,
+            ),
             dtype=int,
         )
         hm_idxs = np.concatenate((IRN_idxs, nonIR_idxs))
@@ -1113,14 +1143,20 @@ class TwoAstroModelHyperModel(object):
         Returns an array of indices for different parameters in model 2.
         The indicies are later used to parse a flat array of all model paraemters
         and to find only the ones that belong to model 2.
-        The order is `IR + skip over GWB params of model 1 + skip over astro params of model 1 
-        + GWB params of model 2` + astro params of model 2 
+        The order is `IR + skip over GWB params of model 1 + skip over astro params of model 1
+        + GWB params of model 2` + astro params of model 2
         """
         IRN_idxs = np.array(range(0, self.model1.num_IR_params), dtype=int)
         nonIR_idxs = np.array(
             range(
-                self.model1.num_IR_params + self.model1.num_gwb_params + self.model1.num_astro_params,
-                self.model1.num_IR_params + self.model1.num_gwb_params + self.model1.num_astro_params + self.model2.num_gwb_params + self.model2.num_astro_params,
+                self.model1.num_IR_params
+                + self.model1.num_gwb_params
+                + self.model1.num_astro_params,
+                self.model1.num_IR_params
+                + self.model1.num_gwb_params
+                + self.model1.num_astro_params
+                + self.model2.num_gwb_params
+                + self.model2.num_astro_params,
             ),
             dtype=int,
         )
@@ -1135,8 +1171,8 @@ class TwoAstroModelHyperModel(object):
         cached.
         """
         return (self.x_to_x1_indices(), self.x_to_x2_indices())
-    
-    def make_initial_guess(self, seed = None):
+
+    def make_initial_guess(self, seed=None):
         """
         Generates an initial guess using uniform random values within
         specified limits.
@@ -1151,9 +1187,8 @@ class TwoAstroModelHyperModel(object):
             rng = np.random.default_rng(seed)
         else:
             rng = np.random.default_rng()
-        return rng.uniform(self.lower_prior_lim_all, 
-                           self.upper_prior_lim_all)
-        
+        return rng.uniform(self.lower_prior_lim_all, self.upper_prior_lim_all)
+
     def get_lnliklihood(self, xs):
         """
         Calculates the log-likelihood of a two-model HM (for astro inference!).
@@ -1180,7 +1215,7 @@ class TwoAstroModelHyperModel(object):
             return 8.01
         else:
             return -np.inf
-    
+
     def sample(self, x0, niter, savedir, resume=True):
         """
         A function to perform the sampling using PTMCMC
@@ -1194,22 +1229,18 @@ class TwoAstroModelHyperModel(object):
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
         groups = [list(np.arange(0, ndim))]
-        nonIR_idxs = np.array(
-            range(
-                self.model1.num_IR_params, x0.shape[0]
-            )
-        )
+        nonIR_idxs = np.array(range(self.model1.num_IR_params, x0.shape[0]))
         [groups.append(nonIR_idxs) for ii in range(2)]
 
         sampler = ptmcmc(
-                ndim,
-                self.get_lnliklihood,
-                self.get_lnprior,
-                cov,
-                groups=groups,
-                outDir=savedir,
-                resume=resume,
-            )
+            ndim,
+            self.get_lnliklihood,
+            self.get_lnprior,
+            cov,
+            groups=groups,
+            outDir=savedir,
+            resume=resume,
+        )
 
         sampler.addProposalToCycle(self.draw_from_prior, 10)
         sampler.addProposalToCycle(self.draw_from_red_prior, 10)
@@ -1280,7 +1311,11 @@ class TwoAstroModelHyperModel(object):
         lqxy = 0
 
         # randomly choose parameter
-        st = self.model1.num_IR_params + self.model1.num_gwb_params + self.model1.num_astro_params
+        st = (
+            self.model1.num_IR_params
+            + self.model1.num_gwb_params
+            + self.model1.num_astro_params
+        )
         param_idx = random.randint(st, st + self.model2.num_gwb_params - 1)
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
@@ -1312,11 +1347,16 @@ class TwoAstroModelHyperModel(object):
 
         self.model1.num_astro_params
         # randomly choose parameter
-        st = self.model1.num_IR_params + self.model1.num_gwb_params + self.model1.num_astro_params + self.model2.num_gwb_params
+        st = (
+            self.model1.num_IR_params
+            + self.model1.num_gwb_params
+            + self.model1.num_astro_params
+            + self.model2.num_gwb_params
+        )
         param_idx = random.randint(st, st + self.model2.num_astro_params - 1)
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
-    
+
     def draw_from_nmodel(self, x, iter, beta):
         """Prior draw.
 
@@ -1325,5 +1365,5 @@ class TwoAstroModelHyperModel(object):
 
         q = x.copy()
         lqxy = 0
-        q[-1] = random.uniform(a = 0, b = 1)
+        q[-1] = random.uniform(a=0, b=1)
         return q, float(lqxy)

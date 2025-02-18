@@ -101,17 +101,25 @@ class UniformPrior(object):
         )
 
         psd_func_sigs = np.array(
-            [str(_) for _ in inspect.signature(gwb_psd_func).parameters if not 'args' in str(_)][2:]
+            [
+                str(_)
+                for _ in inspect.signature(gwb_psd_func).parameters
+                if not "args" in str(_)
+            ][2:]
         )
         orf_func_signs = np.array(
-            [str(_) for _ in inspect.signature(orf_func).parameters if not 'args' in str(_)][1:]
+            [
+                str(_)
+                for _ in inspect.signature(orf_func).parameters
+                if not "args" in str(_)
+            ][1:]
         )
 
-        if 'halflog10_rho' in psd_func_sigs:
+        if "halflog10_rho" in psd_func_sigs:
             self.param_value_container = jnp.zeros(self.crn_bins)
             self.gwb_psd_varied_param_indxs = jnp.array(
-                    [_ for _ in range(crn_bins)], dtype=int
-                )
+                [_ for _ in range(crn_bins)], dtype=int
+            )
         else:
             self.param_value_container = jnp.zeros(len(psd_func_sigs))
             if "fixed_gwb_psd_param_indices" in gwb_helper_dictionary:
@@ -141,7 +149,7 @@ class UniformPrior(object):
             self.gwb_psd_varied_param_indxs
         )
 
-        if not 'halflog10_rho' in psd_func_sigs:
+        if not "halflog10_rho" in psd_func_sigs:
             assertion_psd_msg = f"""Your ordering of GWB PSD params is wrong! Check the `gwb_psd_func` signature.
             The signature demands {psd_func_sigs[self.gwb_psd_varied_param_indxs]}. You supplied {gwb_helper_dictionary["ordered_gwb_psd_model_params"][self.gwb_psd_varied_param_indxs]}."""
             assert np.all(
@@ -296,7 +304,7 @@ class UniformPrior(object):
             return phi.at[: self.crn_bins, self.I, self.J].set(
                 self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :]) * psd_common
             ), psd_common
-        
+
     @partial(jax.jit, static_argnums=(0,))
     def get_lnprior(self, xs):
         """
@@ -342,5 +350,3 @@ class UniformPrior(object):
         :return: returnins the value -8.01.
         """
         return -8.01
-
-    

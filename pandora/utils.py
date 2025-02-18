@@ -7,7 +7,8 @@ import jax
 # jax.config.update('jax_platform_name', 'cpu')
 # jax.config.update("jax_enable_x64", False)
 ##############################################################################################
-    
+
+
 def param_order_help(
     lower_bound_array,
     upper_bound_array,
@@ -54,7 +55,10 @@ def param_order_help(
         x.update({"fixed_gwb_psd_param_indices": jnp.array(fixed_gwb_psd_param_indxs)})
         x.update({"fixed_gwb_psd_param_values": fixed_gwb_psd_param_values})
     return x
+
+
 ##############################################################################################
+
 
 def fixed_gamma_hd_pl(renorm_const, lower_amp=-18.0, upper_amp=-11.0):
     """
@@ -64,7 +68,11 @@ def fixed_gamma_hd_pl(renorm_const, lower_amp=-18.0, upper_amp=-11.0):
     chosen_psd_model = GWBFunctions.powerlaw
     chosen_orf_model = GWBFunctions.hd_orf
     chosen_psd_model_params = np.array(
-        [str(_) for _ in inspect.signature(chosen_psd_model).parameters if not 'args' in str(_)][2:]
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][2:]
     )
     return (
         chosen_psd_model,
@@ -78,7 +86,10 @@ def fixed_gamma_hd_pl(renorm_const, lower_amp=-18.0, upper_amp=-11.0):
             list_of_orf_params=[],
         ),
     )
+
+
 ##############################################################################################
+
 
 def varied_gamma_hd_pl(
     renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
@@ -90,7 +101,11 @@ def varied_gamma_hd_pl(
     chosen_psd_model = GWBFunctions.powerlaw
     chosen_orf_model = GWBFunctions.hd_orf
     chosen_psd_model_params = np.array(
-        [str(_) for _ in inspect.signature(chosen_psd_model).parameters if not 'args' in str(_)][2:]
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][2:]
     )
     return (
         chosen_psd_model,
@@ -103,7 +118,10 @@ def varied_gamma_hd_pl(
             list_of_orf_params=[],
         ),
     )
+
+
 ##############################################################################################
+
 
 def hd_spectrum(renorm_const, crn_bins, lower_halflog10_rho=-9, upper_halflog10_rho=-1):
     """
@@ -113,7 +131,11 @@ def hd_spectrum(renorm_const, crn_bins, lower_halflog10_rho=-9, upper_halflog10_
     chosen_psd_model = GWBFunctions.free_spectrum
     chosen_orf_model = GWBFunctions.hd_orf
     chosen_psd_model_params = np.array(
-        [str(_) for _ in inspect.signature(chosen_psd_model).parameters if not 'args' in str(_)][2:]
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][2:]
     )
     return (
         chosen_psd_model,
@@ -128,7 +150,10 @@ def hd_spectrum(renorm_const, crn_bins, lower_halflog10_rho=-9, upper_halflog10_
             list_of_orf_params=[],
         ),
     )
+
+
 ##############################################################################################
+
 
 def varied_gamma_gt_pl(
     renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
@@ -139,12 +164,20 @@ def varied_gamma_gt_pl(
     logamp_offset = 0.5 * jnp.log10(renorm_const)
     chosen_psd_model = GWBFunctions.powerlaw
     chosen_psd_model_params = np.array(
-        [str(_) for _ in inspect.signature(chosen_psd_model).parameters if not 'args' in str(_)][2:]
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][2:]
     )
 
     chosen_orf_model = GWBFunctions.gt_orf
     chosen_orf_model_params = np.array(
-        [str(_) for _ in inspect.signature(chosen_orf_model).parameters if not 'args' in str(_)][1:]
+        [
+            str(_)
+            for _ in inspect.signature(chosen_orf_model).parameters
+            if not "args" in str(_)
+        ][1:]
     )
 
     return (
@@ -158,7 +191,10 @@ def varied_gamma_gt_pl(
             list_of_orf_params=chosen_orf_model_params,
         ),
     )
+
+
 ##############################################################################################
+
 
 def varied_gamma_bin_orf_pl(
     renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
@@ -169,12 +205,20 @@ def varied_gamma_bin_orf_pl(
     logamp_offset = 0.5 * jnp.log10(renorm_const)
     chosen_psd_model = GWBFunctions.powerlaw
     chosen_psd_model_params = np.array(
-        [str(_) for _ in inspect.signature(chosen_psd_model).parameters if not 'args' in str(_)][2:]
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][2:]
     )
 
     chosen_orf_model = GWBFunctions.bin_orf
     chosen_orf_model_params = np.array(
-        [str(_) for _ in inspect.signature(chosen_orf_model).parameters if not 'args' in str(_)][1:]
+        [
+            str(_)
+            for _ in inspect.signature(chosen_orf_model).parameters
+            if not "args" in str(_)
+        ][1:]
     )
 
     return (
@@ -200,4 +244,6 @@ def varied_gamma_bin_orf_pl(
             list_of_orf_params=chosen_orf_model_params,
         ),
     )
+
+
 ##############################################################################################
