@@ -21,10 +21,10 @@ class NFastroinference(object):
 
         self.nf = pyro_nf_object
         self.B = scale
-        self.mean_gwb = mean[gwb_freq_idxs][None]
-        self.mean_ast = mean[ast_param_idxs][None]
-        self.half_range_gwb = half_range[gwb_freq_idxs][None]
-        self.half_range_ast = half_range[ast_param_idxs][None]
+        self.mean_gwb = mean[gwb_freq_idxs]
+        self.mean_ast = mean[ast_param_idxs]
+        self.half_range_gwb = half_range[gwb_freq_idxs]
+        self.half_range_ast = half_range[ast_param_idxs]
 
 
     def convert_torch_to_numpy(self, torch_tensor):
