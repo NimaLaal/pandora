@@ -70,6 +70,4 @@ class NFastroinference(object):
             self.nf.condition(scaled_ast).sample(batch_shape), dim=0
         )[None]
         log_prob = self.nf.condition(scaled_ast).log_prob(scaled_gwb_avg)
-        return self.transform_rho_to_physical_interval(
-            self.convert_torch_to_numpy(scaled_gwb_avg)
-        )[0], self.convert_torch_to_numpy(log_prob)[0]
+        return self.transform_rho_to_physical_interval(self.convert_torch_to_numpy(scaled_gwb_avg))[0], self.convert_torch_to_numpy(log_prob)[0]

@@ -11,15 +11,10 @@ Painlessly Attempting a Numerical Democratization Of Residual Analysis (PANDORA)
 
 To install, simply run
 ```
+conda create -n pandora python=3.11
+export TEMPO2_PREFIX=/opt/local
 pip install git+https://github.com/NimaLaal/pandora.git
 ```
-In case you encounter issues with ```libstempo``` this might help (tested on Ubuntu 22.04.4 LTS), try:
-```
-conda install gcc_linux-64 
-conda install gxx_linux-64
-conda install gfortran_linux-64
-```
-
 ## Examples
 
 Check the examples folder for a few demo notebooks.
