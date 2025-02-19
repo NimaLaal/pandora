@@ -39,7 +39,8 @@ class MultiPulsarModel(object):
     :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
     :param: del_pta_after_init: do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
     :param: matrix_stabilization: performing some matrix stabilization on the `TNT` matrix.
-
+    :param: the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
+    if `matrix_stabilization` is set to False, this has no efect.
     Author:
     Nima Laal (02/12/2025)
     """
@@ -57,11 +58,13 @@ class MultiPulsarModel(object):
         inc_ecorr=False,
         del_pta_after_init=True,
         matrix_stabilization=True,
+        delta = 1e-6,
     ):
         assert jnp.any(TNr.any() and TNT.any()) or any(psrs), (
             "Either supply a `psrs` object or provide `TNr` and `TNT` arrays."
         )
 
+        self.delta = delta
         self.device = device_to_run_likelihood_on
         self.run_type_object = run_type_object
         self.Tspan = run_type_object.Tspan
@@ -131,8 +134,7 @@ class MultiPulsarModel(object):
 
         ##############Make TNT More Stable:
         if matrix_stabilization:
-            delta = 1e-6
-            print(f"The delta is {delta}")
+            print(f"The delta is {self.delta}")
             print(
                 f"Condition number of the TNT matrix before stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
             )
@@ -140,10 +142,10 @@ class MultiPulsarModel(object):
                 jnp.sqrt(self._TNT.diagonal()), jnp.sqrt(self._TNT.diagonal())
             )
             corr = self._TNT / D
-            corr = corr + delta * jnp.eye(self._TNT.shape[0])
-            self._TNT = D * corr / (1 + delta)
+            corr = corr + self.delta * jnp.eye(self._TNT.shape[0])
+            self._TNT = D * corr / (1 + self.delta)
             # evals, evecs = jnp.linalg.eigh(corr)
-            # corr = jnp.dot(evecs * jnp.maximum(evals, delta), evecs.T)
+            # corr = jnp.dot(evecs * jnp.maximum(evals, self.delta), evecs.T)
             # self._TNT = D * corr
             print(
                 f"Condition number of the TNT matrix after stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
@@ -470,7 +472,8 @@ class AstroInferenceModel(object):
     :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
     :param: del_pta_after_init: do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
     :param: matrix_stabilization: performing some matrix stabilization on the `TNT` matrix.
-
+    :param: the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
+    if `matrix_stabilization` is set to False, this has no efect.
     Author:
     Nima Laal (02/12/2025)
     """
@@ -492,10 +495,12 @@ class AstroInferenceModel(object):
         inc_ecorr=False,
         del_pta_after_init=True,
         matrix_stabilization=True,
+        delta = 1e-6,
     ):
         assert jnp.any(TNr.any() and TNT.any()) or any(psrs), (
             "Either supply a `psrs` object or provide `TNr` and `TNT` arrays."
         )
+        self.delta = delta
         self.nf_dist = nf_dist
         self.run_type_object = run_type_object
         self.Npulsars = run_type_object.Npulsars
@@ -575,8 +580,7 @@ class AstroInferenceModel(object):
 
         ##############Make TNT More Stable:
         if matrix_stabilization:
-            delta = 1e-6
-            print(f"The delta is {delta}")
+            print(f"The delta is {self.delta}")
             print(
                 f"Condition number of the TNT matrix before stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
             )
@@ -584,10 +588,10 @@ class AstroInferenceModel(object):
                 jnp.sqrt(self._TNT.diagonal()), jnp.sqrt(self._TNT.diagonal())
             )
             corr = self._TNT / D
-            corr = corr + delta * jnp.eye(self._TNT.shape[0])
-            self._TNT = D * corr / (1 + delta)
+            corr = corr + self.delta * jnp.eye(self._TNT.shape[0])
+            self._TNT = D * corr / (1 + self.delta)
             # evals, evecs = jnp.linalg.eigh(corr)
-            # corr = jnp.dot(evecs * jnp.maximum(evals, delta), evecs.T)
+            # corr = jnp.dot(evecs * jnp.maximum(evals, self.delta), evecs.T)
             # self._TNT = D * corr
             print(
                 f"Condition number of the TNT matrix after stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
