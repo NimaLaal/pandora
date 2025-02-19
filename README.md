@@ -28,4 +28,4 @@ Check the examples folder for a few demo notebooks.
 
 ## Authors
 
-Nima Laal
+[Nima Laal](nima.laal@gmail.com)
