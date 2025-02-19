@@ -2,7 +2,7 @@
 
 ## The Project
 
-Painlessly Attempting a Numerical Democratization Of Residual Analysis (PANDORA)
+Painlessly Attempting a Numerical Democratization Of [pulsar timing] Residual Analysis (PANDORA)
 
 ## Unique Features
 1. Perform astrophysical inference and model selection (product space sampling) on Pulsar Timing Array (PTA) data sets using normalizing flows.
