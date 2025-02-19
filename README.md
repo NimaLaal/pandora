@@ -6,7 +6,7 @@ Painlessly Attempting a Numerical Democratization Of Residual Analysis (PANDORA)
 
 ## Unique Features
 1. Perform astrophysical inference and model selection (product space sampling) on Pulsar Timing Array (PTA) data sets using normalizing flows.
-2. Multi-pulsar Gibbs sampling algorithm for the most general, agnostic, per-frequency Bayesian search for a low-frequency (red) noise process in PTA data <a id='https://arxiv.org/pdf/2410.11944'></a>
+2. [Multi-pulsar Gibbs sampling] (https://arxiv.org/pdf/2410.11944) algorithm for the most general, agnostic, per-frequency Bayesian search for a low-frequency (red) noise process in a PTA data.
 
 ## Useful Features
 Perform various real data set GWB detection analyses the fastest way possible given the limitations of JAX, Numpy, and your own hardware!  
