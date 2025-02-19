@@ -23,6 +23,7 @@ conda create -n pandora python=3.11
 pip install git+https://github.com/NimaLaal/pandora.git
 ```
 ## Examples
+It is highly recommended that you have ```enterprise``` installed in the same environment as ```pandora```. However, for M-series macs, this comes at the price of not utilizing arm64. If you do not have ```enterprise``` installed, you need to supply things manually to some of the pandora functions. Things like, ```Tspan```, ```TNT```, ```TNr```, ```pulsar positions```, etc. Take a look at the data directory for some of these files for the NG15year data set.
 
 Check the examples folder for a few demo notebooks.
 
