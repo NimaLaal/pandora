@@ -28,5 +28,5 @@ Check the examples folder for a few demo notebooks.
 
 ## Authors
 
-Nima Laal< br / > 
+Nima Laal<br/> 
 nima.laal@gmail.com
