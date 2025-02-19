@@ -2,10 +2,13 @@ import numpy as np
 import scipy.linalg as sl
 from tqdm import tqdm
 from functools import cached_property, partial
-import os, random
-from enterprise_extensions import blocks
+import os, random, warnings
 from PTMCMCSampler.PTMCMCSampler import PTSampler as ptmcmc
-from enterprise.signals import signal_base, gp_signals
+try:
+    from enterprise_extensions import blocks
+    from enterprise.signals import signal_base, gp_signals
+except ImportError:
+    warnings.warn("enterprise and enterprise_extensions are not found. Make sure you know your TNT and TNr tensors!!!!")
 
 import jax
 import jax.numpy as jnp
@@ -82,7 +85,7 @@ class MultiPulsarModel(object):
         )
         self.num_IR_params = 2 * self.Npulsars
 
-        if not TNr and not TNT:
+        if not TNr.any() and not TNT.any():
             tm = gp_signals.MarginalizingTimingModel(use_svd=True)
             wn = blocks.white_noise_block(
                 vary=False,
@@ -526,7 +529,7 @@ class AstroInferenceModel(object):
             )
         )
 
-        if not TNr and not TNT:
+        if not TNr.any() and not TNT.any():
             tm = gp_signals.MarginalizingTimingModel(use_svd=True)
             wn = blocks.white_noise_block(
                 vary=False,
