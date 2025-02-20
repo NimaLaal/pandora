@@ -18,6 +18,7 @@ Perform various real data set GWB detection analyses the fastest way possible gi
 To install with enterprise:
 ```
 conda create -n pandora python=3.11
+conda activate pandora
 pip install scikit-sparse==0.4.13
 pip install git+https://github.com/nanograv/enterprise.git
 pip install git+https://github.com/nanograv/enterprise_extensions.git
@@ -26,6 +27,7 @@ pip install git+https://github.com/NimaLaal/pandora.git
 To install without enterprise
 ```
 conda create -n pandora python=3.11
+conda activate pandora
 pip install git+https://github.com/NimaLaal/pandora.git
 ```
 ### Note
