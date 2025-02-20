@@ -1,6 +1,6 @@
 # PANDORA
 
-## The Project
+## Project
 
 Painlessly Attempting a Numerical Democratization Of [pulsar timing] Residual Analysis (PANDORA)
 
