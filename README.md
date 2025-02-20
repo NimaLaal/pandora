@@ -15,7 +15,7 @@ Perform various real data set GWB detection analyses the fastest way possible gi
 
 
 ### Installing
-To install with enterprise on Debian:
+To install with ```enterprise``` on Debian:
 ```
 conda create -n pandora python=3.11
 conda activate pandora
