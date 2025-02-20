@@ -23,10 +23,9 @@ pip install git+https://github.com/nanograv/enterprise.git
 pip install git+https://github.com/nanograv/enterprise_extensions.git
 pip install git+https://github.com/NimaLaal/pandora.git
 ```
-To install, simply run
+To install without enterprise
 ```
 conda create -n pandora python=3.11
-# export TEMPO2_PREFIX=/opt/local
 pip install git+https://github.com/NimaLaal/pandora.git
 ```
 ### Note
