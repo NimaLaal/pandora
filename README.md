@@ -42,4 +42,3 @@ Check the examples folder for a few demo notebooks.
 ## Authors
 
 [Nima Laal](https://ui.adsabs.harvard.edu/search/filter_author_facet_hier_fq_author=AND&filter_author_facet_hier_fq_author=author_facet_hier%3A%221%2FLaal%2C%20N%2FLaal%2C%20Nima%22&fq=%7B!type%3Daqp%20v%3D%24fq_database%7D&fq=%7B!type%3Daqp%20v%3D%24fq_author%7D&fq_author=(author_facet_hier%3A%221%2FLaal%2C%20N%2FLaal%2C%20Nima%22)&fq_database=(database%3Aastronomy%20OR%20database%3Aphysics)&q=%20author%3A%22Nima%20Laal%22&sort=date%20desc%2C%20bibcode%20desc&p_=0)<br/> 
-nima.laal@gmail.com
