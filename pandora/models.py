@@ -280,6 +280,23 @@ class UniformPrior(object):
             )
 
     @partial(jax.jit, static_argnums=(0,))
+    def get_phi_mat_CURN(self, xs):
+        """
+        Constructs the phi-matrix based on the flattened array of model paraemters (`xs`)
+
+        :param xs: flattened array of model paraemters (`xs`)
+
+        :return: the phi-matrix` with dimensions `(n_f,n_p, n_p)`.
+        """
+        log10amp, gamma, gwb_psd_params = (
+            xs[1 : self.num_IR_params : 2],
+            xs[0 : self.num_IR_params : 2],
+            xs[self.num_IR_params : self.gwb_psd_params_end_idx],
+        )
+        return self.get_phi_diag(log10amp, gamma, gwb_psd_params)
+
+
+    @partial(jax.jit, static_argnums=(0,))
     def get_phi_mat_and_common_psd(self, xs):
         """
         Constructs the phi-matrix based on the flattened array of model paraemters (`xs`)

@@ -19,6 +19,335 @@ from jax.dlpack import to_dlpack, from_dlpack
 # jax.config.update('jax_platform_name', 'cpu')
 # jax.config.update("jax_enable_x64", False)
 
+class CURN(object):
+    """
+    A class to calculate likelihood based on given IRN + GWB models (no deterministic signal)
+
+    :param run_type_object: a class from `run_types.py`
+    :param device_to_run_likelihood_on: the device (cpu, gpu, cuda, METAL) to perform likelihood calculation on.
+    :param psrs: an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
+    :param TNr: the so-called TNr matrix. It is the product of the basis matrix `F`
+    with the inverse of the timing marginalized white noise covaraince matrix D and the timing residulas `r`.
+    The naming convension should read FD^-1r but TNr is a more well-known name for this quantity!
+    :param TNT: the so-called TNT matrix. It is the product of the basis matrix `F`
+    with the inverse of the timing marginalized white noise covaraince matrix D and the `F` transpose matrix.
+    The naming convension should read FD^-1F but TNT is a more well-known name for this quantity (it sounds dynamite!)
+    :param: noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
+    :param: backend: the telescope backend. Ignored if `TNr` and `TNT` is supplied
+    :param: tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
+    :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
+    :param: del_pta_after_init: do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
+    :param: matrix_stabilization: performing some matrix stabilization on the `TNT` matrix.
+    :param: the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
+    if `matrix_stabilization` is set to False, this has no efect.
+    Author:
+    Nima Laal (02/12/2025)
+    """
+
+    def __init__(
+        self,
+        run_type_object,
+        device_to_run_likelihood_on,
+        psrs,
+        TNr=jnp.array([False]),
+        TNT=jnp.array([False]),
+        noise_dict=None,
+        backend="none",
+        tnequad=False,
+        inc_ecorr=False,
+        del_pta_after_init=True,
+        matrix_stabilization=True,
+        delta = 1e-6,
+    ):
+        assert jnp.any(TNr.any() and TNT.any()) or any(psrs), (
+            "Either supply a `psrs` object or provide `TNr` and `TNT` arrays."
+        )
+        self.delta = delta
+        self.device = device_to_run_likelihood_on
+        self.run_type_object = run_type_object
+        self.Tspan = run_type_object.Tspan
+        self.noise_dict = noise_dict
+        self.Npulsars = run_type_object.Npulsars
+        self.renorm_const = run_type_object.renorm_const
+        self.crn_bins = run_type_object.crn_bins
+        self.int_bins = run_type_object.int_bins
+        self.diag_idx = jnp.arange(0, self.Npulsars, 1, int)
+        assert self.crn_bins <= self.int_bins
+        self.kmax = 2 * self.int_bins
+        self.k_idx = jnp.arange(0, self.kmax)
+        self.total_dim = self.Npulsars * self.kmax
+        self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
+        self.lower_prior_lim_all = self.jax_to_numpy(
+            self.run_type_object.lower_prior_lim_all
+        )
+        self.upper_prior_lim_all = self.jax_to_numpy(
+            self.run_type_object.upper_prior_lim_all
+        )
+        self.num_gwb_params = len(
+            self.run_type_object.lower_prior_lim_all[2 * self.Npulsars :]
+        )
+        self.num_IR_params = 2 * self.Npulsars
+
+        if not TNr.any() and not TNT.any():
+            tm = gp_signals.MarginalizingTimingModel(use_svd=True)
+            wn = blocks.white_noise_block(
+                vary=False,
+                inc_ecorr=inc_ecorr,
+                gp_ecorr=False,
+                select=backend,
+                tnequad=tnequad,
+            )
+            rn = blocks.red_noise_block(
+                psd="powerlaw",
+                prior="log-uniform",
+                Tspan=self.Tspan,
+                components=self.int_bins,
+                gamma_val=None,
+            )
+            gwb = blocks.common_red_noise_block(
+                psd="spectrum",
+                prior="log-uniform",
+                Tspan=self.Tspan,
+                components=self.crn_bins,
+                gamma_val=13 / 3,
+                name="gw",
+                orf="crn",
+            )
+            s = tm + wn + rn + gwb
+
+            self.pta = signal_base.PTA(
+                [s(p) for p in psrs], signal_base.LogLikelihoodDenseCholesky
+            )
+            self.pta.set_default_params(self.noise_dict)
+
+            self._TNr = jnp.array(self.pta.get_TNr(params={}))[..., None] / jnp.sqrt(
+                self.renorm_const
+            )
+            self._TNT = jnp.array(
+                jnp.array(self.pta.get_TNT(params={})) / self.renorm_const
+            )
+            if del_pta_after_init:
+                del self.pta
+        else:
+            self._TNr = TNr / jnp.sqrt(self.renorm_const)
+            self._TNT = TNT / self.renorm_const
+
+        ##############Make TNT More Stable:
+        if matrix_stabilization:
+            print(f"The delta is {self.delta}")
+            print(
+                f"The max condition number of the TNT matrix before stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT).max())}"
+            )
+            self._TNT =  self.regularize(self._TNT)
+            print(
+                f"The max condition number of the TNT matrix after stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT).max())}"
+            )
+
+    ##################################################################
+
+    """
+    Some convenient functions for moving between JAX and Numpy
+    depending on the device (dlpack cannot copy between CPU and GPU.)
+    dlpack simply gives you a `view` of the array.
+    """
+
+    def jax_to_numpy(self, jax_array):
+        if self.device == "cpu":
+            return np.from_dlpack(jax_array)
+        else:
+            return np.array(jax_array)
+
+    def numpy_to_jax(self, numpy_array):
+        if self.device == "cpu":
+            return jax.dlpack.from_dlpack(numpy_array)
+        else:
+            return jnp.array(numpy_array)
+
+    def lnliklihood_wrapper_numpy(self, xs):
+        xs_jax = self.numpy_to_jax(xs)
+        return self.jax_to_numpy(self.get_lnliklihood(xs_jax))
+
+    def lnliklihood_LU_wrapper_numpy(self, xs):
+        xs_jax = self.numpy_to_jax(xs)
+        return self.jax_to_numpy(self.get_lnliklihood_LU(xs_jax))
+
+    ##################################################################
+
+    def regularize(self, herm_mat):
+        '''
+        Regularizes a rank-deficient real symmetric matrix into a full-rank matrix
+        param: `herm_mat`: the matrix to perform regularization on. The shape must be
+                            (n_freq by n_pulsar by n_pulsar)
+        param: `return_fac`: wheher to return the square-root factorization
+        '''
+        sqr_diags = np.sqrt(herm_mat.diagonal(axis1 = 1, axis2 = 2))[..., None]
+        D = sqr_diags @ sqr_diags.transpose(0, 2, 1)
+        corr = herm_mat/D
+        return corr.at[:, self.diag_idx, self.diag_idx].add(self.delta) * D
+
+    @partial(jax.jit, static_argnums=(0,))
+    def get_lnliklihood(self, xs):
+        '''
+        A function to return natural log of the CURN likelihood
+
+        param: `xs`: powerlaw model parameters
+        '''
+        phi_diagonal, psd_common = self.run_type_object.get_phi_mat_CURN(xs)
+        logdet_phis = 2 * jnp.sum(jnp.log(phi_diagonal), axis = 0)
+        phiinv = jnp.repeat(1/phi_diagonal.T, 2, axis = 1)
+
+        Sigmas = self._TNT.at[:, self.k_idx, self.k_idx].add(phiinv)
+        cfs = jsp.linalg.cho_factor(Sigmas, lower=False)
+        expvals = jsp.linalg.cho_solve(cfs, self._TNr)
+        logdet_sigmas = jnp.sum(2 * jnp.log(cfs[0].diagonal(axis1 = 1, axis2 = 2)), axis = 1)
+
+        return 0.5 * jnp.sum((self._TNr.transpose((0, 2, 1)) @ expvals)[:, 0, 0] - logdet_sigmas - logdet_phis)
+
+    def get_lnprior(self, xs):
+        """
+        A function to return natural log uniform-prior
+
+        :param: xs: flattened array of model paraemters (`xs`)
+
+        :return: either -infinity or a constant based on the predefined limits of the uniform-prior.
+        """
+        return self.run_type_object.get_lnprior(xs=xs)
+
+    def get_lnprior_numpy(self, xs):
+        """
+        A function to return natural log prior (uniform)
+
+        param: `xs`: powerlaw model parameters
+        """
+        state = np.logical_and(
+            xs > self.lower_prior_lim_all, xs < self.upper_prior_lim_all
+        ).all()
+
+        if state:
+            return -8.01
+        else:
+            return -np.inf
+
+    def make_initial_guess_numpy(self, seed=None):
+        """
+        Generates an initial guess using uniform random values within
+        specified limits.
+
+        :param seed: random number generator `seed`
+
+        :return: an array of random numbers generated using
+        numpy. The shape of the array is determined by the number of elements in
+        `self.upper_prior_lim_all`.
+        """
+        if seed:
+            rng = np.random.default_rng(seed)
+        else:
+            rng = np.random.default_rng()
+        return rng.uniform(self.lower_prior_lim_all, self.upper_prior_lim_all)
+
+    def sample(
+        self,
+        x0,
+        niter,
+        savedir,
+        resume=True,
+        seed=None,
+        sample_enterprise=False,
+    ):
+        """
+        A function to perform the sampling using PTMCMC
+
+        :param the initial guess `x0` of all model parameters
+        :param niter: the number of sampling iterations
+        :param savedir: the directory to save the chains
+        :param resume: do you want to resume from a saved chain?
+        :param seed: rng seed!
+        :param sample_enterprise: do you want to sample the internal pta object?
+        :param LU_decomp: do you want to use the PLU decomposed likelihood?
+        """
+        if not np.any(x0):
+            x0 = self.make_initial_guess_numpy(seed)
+        ndim = len(x0)
+        cov = np.diag(np.ones(ndim) * 0.01**2)
+        groups = [list(np.arange(0, ndim))]
+        nonIR_idxs = np.array(range(self.num_IR_params, x0.shape[0]))
+        [groups.append(nonIR_idxs) for ii in range(2)]
+
+        if not sample_enterprise:
+            sampler = ptmcmc(
+                ndim,
+                self.lnliklihood_wrapper_numpy,
+                self.get_lnprior_numpy,
+                cov,
+                groups=groups,
+                outDir=savedir,
+                resume=resume,
+            )
+        else:
+            sampler = ptmcmc(
+                ndim,
+                self.pta.get_lnlikelihood,
+                self.get_lnprior_numpy,
+                cov,
+                groups=groups,
+                outDir=savedir,
+                resume=resume,
+            )
+
+        sampler.addProposalToCycle(self.draw_from_prior, 10)
+        sampler.addProposalToCycle(self.draw_from_red_prior, 10)
+        sampler.addProposalToCycle(self.draw_from_nonIR_prior, 10)
+        # TO DO: add proposal for orf parameters in case they exist in the model.
+
+        sampler.sample(
+            x0,
+            niter,
+            SCAMweight=30,
+            AMweight=15,
+            DEweight=50,
+        )
+
+    def draw_from_prior(self, x, iter, beta):
+        """Prior draw.
+
+        The function signature is specific to PTMCMCSampler.
+        """
+
+        q = x.copy()
+        lqxy = 0
+
+        # randomly choose parameter
+        param_idx = random.randint(0, x.shape[0] - 1)
+        q[param_idx] = self.make_initial_guess_numpy()[param_idx]
+        return q, float(lqxy)
+
+    def draw_from_red_prior(self, x, iter, beta):
+        """Prior draw.
+
+        The function signature is specific to PTMCMCSampler.
+        """
+
+        q = x.copy()
+        lqxy = 0
+
+        # randomly choose parameter
+        param_idx = random.randint(0, self.num_IR_params - 1)
+        q[param_idx] = self.make_initial_guess_numpy()[param_idx]
+        return q, float(lqxy)
+
+    def draw_from_nonIR_prior(self, x, iter, beta):
+        """Prior draw.
+
+        The function signature is specific to PTMCMCSampler.
+        """
+
+        q = x.copy()
+        lqxy = 0
+
+        # randomly choose parameter
+        param_idx = random.randint(self.num_IR_params, x.shape[0] - 1)
+        q[param_idx] = self.make_initial_guess_numpy()[param_idx]
+        return q, float(lqxy)
 
 class MultiPulsarModel(object):
     """
