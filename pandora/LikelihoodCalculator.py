@@ -1036,7 +1036,7 @@ class AstroInferenceModel(object):
         :param savedir: the directory to save the chains
         :param resume: do you want to resume from a saved chain?
         """
-        if not x0:
+        if not x0.any():
             x0 = self.make_initial_guess()
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
@@ -1317,7 +1317,7 @@ class TwoModelHyperModel(object):
         :param savedir: the directory to save the chains
         :param resume: do you want to resume from a saved chain?
         """
-        if not x0:
+        if not x0.any():
             x0 = self.make_initial_guess()
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
