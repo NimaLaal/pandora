@@ -1134,7 +1134,8 @@ class AstroInferenceModel(object):
 
         # randomly choose parameter
         param_idx = random.randint(
-            -self.num_varied_astro_params - self.crn_bins, -self.num_varied_astro_params
+            
+            -self.num_varied_astro_params, -1
         )
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
