@@ -873,6 +873,8 @@ class AstroInferenceModel(object):
         else:
             self.astro_param_varied_indices = np.array([_ for _ in range(self.num_astro_params)])
         self.num_varied_astro_params = len(self.astro_param_varied_indices)
+        assert len(self.make_initial_guess()) == len(run_type_object.upper_prior_lim_all) + self.num_varied_astro_params, \
+        'You have chosen to fix some astro parameters. Make sure your prior also reflects this choice!'
 
         if not TNr.any() and not TNT.any():
             tm = gp_signals.MarginalizingTimingModel(use_svd=True)
