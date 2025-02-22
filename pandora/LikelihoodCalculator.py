@@ -816,6 +816,8 @@ class AstroInferenceModel(object):
         astro_additional_prior_func,
         run_type_object,
         psrs,
+        astro_param_fixed_values = np.array([False]), 
+        astro_param_fixed_indices =np.array([False]), 
         TNr=jnp.array([False]),
         TNT=jnp.array([False]),
         noise_dict=None,
@@ -862,6 +864,15 @@ class AstroInferenceModel(object):
                 astr_prior_upper_lim,
             )
         )
+        
+        self.astro_container = np.zeros(self.num_astro_params)
+        if astro_param_fixed_values.any():
+            assert np.all(astro_param_fixed_indices >= 0), 'No negative indices!'
+            self.astro_container[astro_param_fixed_indices] = astro_param_fixed_values
+            self.astro_param_varied_indices = np.array([_ for _ in range(self.num_astro_params) if not _ in astro_param_fixed_indices])
+        else:
+            self.astro_param_varied_indices = np.array([_ for _ in range(self.num_astro_params)])
+        self.num_varied_astro_params = len(self.astro_param_varied_indices)
 
         if not TNr.any() and not TNT.any():
             tm = gp_signals.MarginalizingTimingModel(use_svd=True)
@@ -986,8 +997,9 @@ class AstroInferenceModel(object):
 
         :param: xs: flattened array of model paraemters (`xs`)
         """
-        astro_params = xs[-self.num_astro_params :]
-        xs_non_astro = jnp.array(xs[: -self.num_astro_params])
+        astro_params = self.astro_container.copy()
+        astro_params[self.astro_param_varied_indices] = xs[-self.num_varied_astro_params :]
+        xs_non_astro = jnp.array(xs[: -self.num_varied_astro_params])
         lik0, psd_common = self.get_lnliklihood_non_astro(xs_non_astro)
         half_common_log10_rho = (
             np.array(0.5 * jnp.log10(psd_common.T)) - self.log_offset
@@ -1120,7 +1132,7 @@ class AstroInferenceModel(object):
 
         # randomly choose parameter
         param_idx = random.randint(
-            -self.num_astro_params - self.crn_bins, -self.num_astro_params
+            -self.num_varied_astro_params - self.crn_bins, -self.num_varied_astro_params
         )
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
