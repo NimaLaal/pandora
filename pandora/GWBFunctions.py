@@ -21,6 +21,7 @@ bins_decent = (
     jnp.array([1e-3, 30.0, 50.0, 80.0, 100.0, 120.0, 150.0, 180.0]) * jnp.pi / 180.0
 )
 
+psd_lower_threshold = 1e-18 #No PSD value should go lower than this!
 
 """
 Library for GWB PSD and ORF Functions.
@@ -28,12 +29,13 @@ Library for GWB PSD and ORF Functions.
 
 
 def powerlaw(f, df, log10_A, gamma):
-    return (
+    calc= (
         df
         * 10 ** (2 * log10_A)
         / (12 * jnp.pi**2 * f[:, None] ** 3)
         * (f[:, None] / fref) ** (3 - gamma)
     )
+    return jnp.maximum(calc, psd_lower_threshold)
 
 
 ##############################################################################################
@@ -52,10 +54,11 @@ def free_spectrum(f, df, *halflog10_rho):
 def turnover(f, df, log10_A, gamma, lf0, kappa, beta):
     hcf = (
         10**log10_A
-        * (f / fref) ** ((3 - gamma) / 2)
+        * (f[:, None] / fref) ** ((3 - gamma) / 2)
         / (1 + (10**lf0 / f) ** kappa) ** beta
     )
-    return hcf**2 / 12 / jnp.pi**2 / f**3 * df
+    calc = hcf**2 / 12 / jnp.pi**2 / f[:, None]**3 * df
+    return jnp.maximum(calc, psd_lower_threshold)
 
 
 ##############################################################################################
@@ -81,11 +84,12 @@ def turnover_knee(f, df, log10_A, gamma, lfb, lfk, kappa, delta):
     """
     hcf = (
         10**log10_A
-        * (f / fref) ** ((3 - gamma) / 2)
-        * (1.0 + (f / 10**lfk)) ** delta
+        * (f[:, None] / fref) ** ((3 - gamma) / 2)
+        * (1.0 + (f[:, None] / 10**lfk)) ** delta
         / jnp.sqrt(1 + (10**lfb / f) ** kappa)
     )
-    return hcf**2 / 12 / jnp.pi**2 / f**3 * df
+    calc = hcf**2 / 12 / jnp.pi**2 / f[:, None]**3 * df
+    return jnp.maximum(calc, psd_lower_threshold)
 
 
 ##############################################################################################
@@ -103,27 +107,29 @@ def broken_powerlaw(f, df, log10_A, gamma, delta, log10_fb, kappa):
     """
     hcf = (
         10**log10_A
-        * (f / fref) ** ((3 - gamma) / 2)
-        * (1 + (f / 10**log10_fb) ** (1 / kappa)) ** (kappa * (gamma - delta) / 2)
+        * (f[:, None] / fref) ** ((3 - gamma) / 2)
+        * (1 + (f[:, None] / 10**log10_fb) ** (1 / kappa)) ** (kappa * (gamma - delta) / 2)
     )
-    return hcf**2 / 12 / jnp.pi**2 / f**3 * df
+    calc = hcf**2 / 12 / jnp.pi**2 / f[:, None]**3 * df
+    return jnp.maximum(calc, psd_lower_threshold)
 
 
 ##############################################################################################
 def powerlaw_genmodes(f, df, log10_A, gamma, wgts):
-    return (
+    calc = (
         (10**log10_A) ** 2
         / 12.0
         / jnp.pi**2
         * fref ** (gamma - 3)
-        * f ** (-gamma)
+        * f[:, None] ** (-gamma)
         * wgts**2
     )
+    return jnp.maximum(calc, psd_lower_threshold)
 
 
 ##############################################################################################
 def infinitepower(f, df):
-    return jnp.full_like(f, 1e40, dtype="d")
+    return jnp.full_like(f[:, None], 1e40, dtype="d")
 
 
 ##############################################################################################
@@ -300,3 +306,6 @@ def legendre_orf(leg_pol_values, params):
 
 
 ##############################################################################################
+def zero_orf(angle, *args):
+    """No correlation."""
+    return jnp.zeros(angle)

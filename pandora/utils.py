@@ -87,9 +87,41 @@ def fixed_gamma_hd_pl(renorm_const, lower_amp=-18.0, upper_amp=-11.0):
         ),
     )
 
-
 ##############################################################################################
 
+
+def broken_pl(renorm_const, lower_amp=-18.0, upper_amp=-11.0, 
+                                         lower_gamma = 0., upper_gamma = 7.,
+                                         lower_log10_fb = -8.7, upper_log10_fb = -7.
+                            ):
+    """
+    A lazy way to get the right `param_order_help` dictionary for a fixed gamma HD model
+    """
+    logamp_offset = logamp_offset = 0.5 * jnp.log10(renorm_const)
+    chosen_psd_model = GWBFunctions.broken_powerlaw
+    chosen_orf_model = GWBFunctions.hd_orf
+    chosen_psd_model_params = np.array(
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][2:]
+    )
+    return (
+        chosen_psd_model,
+        chosen_orf_model,
+        param_order_help(
+            list_of_psd_params=chosen_psd_model_params,
+            lower_bound_array=jnp.array([lower_amp + logamp_offset, lower_gamma, lower_log10_fb]),
+            upper_bound_array=jnp.array([upper_amp + logamp_offset, upper_gamma, upper_log10_fb]),
+            fixed_gwb_psd_params=["delta", "kappa"],
+            fixed_gwb_psd_param_values=jnp.array([0., 0.1]),
+            list_of_orf_params=[],
+        ),
+    )
+
+
+##############################################################################################
 
 def varied_gamma_hd_pl(
     renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
