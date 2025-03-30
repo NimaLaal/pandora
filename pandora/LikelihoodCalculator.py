@@ -1846,21 +1846,8 @@ class KDE(object):
 
     :param run_type_object: a class from `run_types.py`
     :param device_to_run_likelihood_on: the device (cpu, gpu, cuda, METAL) to perform likelihood calculation on.
-    :param psrs: an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
-    :param TNr: the so-called TNr matrix. It is the product of the basis matrix `F`
-    with the inverse of the timing marginalized white noise covaraince matrix D and the timing residulas `r`.
-    The naming convension should read FD^-1r but TNr is a more well-known name for this quantity!
-    :param TNT: the so-called TNT matrix. It is the product of the basis matrix `F`
-    with the inverse of the timing marginalized white noise covaraince matrix D and the `F` transpose matrix.
-    The naming convension should read FD^-1F but TNT is a more well-known name for this quantity (it sounds dynamite!)
-    :param: noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
-    :param: backend: the telescope backend. Ignored if `TNr` and `TNT` is supplied
-    :param: tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
-    :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
-    :param: del_pta_after_init: do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
-    :param: matrix_stabilization: performing some matrix stabilization on the `TNT` matrix.
-    :param: the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
-    if `matrix_stabilization` is set to False, this has no efect.
+    :param grid: the grid used for KDEs. The shape must be (n_f, n_p)
+    :param den: the KDE values. The shape must be (n_f, n_p)
     Author:
     Nima Laal (02/12/2025)
     """
