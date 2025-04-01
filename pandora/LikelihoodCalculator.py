@@ -1935,7 +1935,7 @@ class KDE(object):
         '''
         A function to return natural log of the CURN likelihood
 
-        param: `xs`: powerlaw model parameters
+        param: `xs`: PSD model parameters
         '''
         phi_diagonal, psd_common = self.run_type_object.get_phi_mat_CURN(xs)
         idxs = jnp.searchsorted(self.grid, 0.5 * jnp.log10(phi_diagonal), method = self.search_method) - 1
