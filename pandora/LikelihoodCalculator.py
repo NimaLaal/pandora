@@ -90,7 +90,7 @@ class CURN(object):
         self.int_bins = run_type_object.int_bins
         self.dm_bins = run_type_object.dm_bins
         if self.dm_bins:
-            self.kmax = 2 * self.dm_bins
+            self.kmax = 2 * (self.dm_bins + self.int_bins)
             self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.dm_bins, axis=0)
         else:
             self.kmax = 2 * self.int_bins
