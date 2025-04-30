@@ -16,30 +16,43 @@ import jax.scipy as jsp
 import jax.random as jr
 from jax.dlpack import to_dlpack, from_dlpack
 
-# jax.config.update('jax_platform_name', 'cpu')
-# jax.config.update("jax_enable_x64", False)
-
 class CURN(object):
     """
-    A class to calculate factorized likelihood based on given IRN + GWB models (no deterministic signal)
+    A class to calculate a CURN likelihood.
 
-    :param run_type_object: a class from `run_types.py`
-    :param device_to_run_likelihood_on: the device (cpu, gpu, cuda, METAL) to perform likelihood calculation on.
-    :param psrs: an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
-    :param TNr: the so-called TNr matrix. It is the product of the basis matrix `F`
-    with the inverse of the timing marginalized white noise covaraince matrix D and the timing residulas `r`.
-    The naming convension should read FD^-1r but TNr is a more well-known name for this quantity!
-    :param TNT: the so-called TNT matrix. It is the product of the basis matrix `F`
-    with the inverse of the timing marginalized white noise covaraince matrix D and the `F` transpose matrix.
-    The naming convension should read FD^-1F but TNT is a more well-known name for this quantity (it sounds dynamite!)
-    :param: noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
-    :param: backend: the telescope backend. Ignored if `TNr` and `TNT` is supplied
-    :param: tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
-    :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
-    :param: del_pta_after_init: do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
-    :param: matrix_stabilization: performing some matrix stabilization on the `TNT` matrix.
-    :param: the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
-    if `matrix_stabilization` is set to False, this has no efect.
+    :param run_type_object: 
+        a class from `models.py`
+    :param device_to_run_likelihood_on: 
+        the device (cpu, cuda, METAL) to perform likelihood calculation on.
+    :param psrs: 
+        an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
+    :param TNr: 
+        the so-called TNr matrix. It is the product of the basis matrix `F`
+        with the inverse of the timing marginalized white noise covaraince
+        matrix D and the timing residulas `r`.The naming convension should read 
+        FD^-1r but TNr is easy to pronounce.
+    :param TNT: 
+        the so-called TNT matrix. It is the product of the basis matrix `F`
+        with the inverse of the timing marginalized white noise covaraince
+        matrix D and the `F` transpose matrix. The naming convension should read
+        FD^-1F but TNT just sounds dynamite!
+    :param: noise_dict: 
+        the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
+    :param: backend: 
+        the telescope backend. Ignored if `TNr` and `TNT` is supplied
+    :param: tnequad: 
+        do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
+    :param: inc_ecorr: 
+        do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
+    :param: del_pta_after_init: 
+        do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
+    :param: matrix_stabilization: 
+        performing some matrix stabilization on the `TNT` matrix.
+    :param: delta
+        the amount by which the diagonal of the correlation version of TNT is added by.
+        This stabilizes the TNT matrix.if `matrix_stabilization` is set to False, 
+        this has no efect.
+
     Author:
     Nima Laal (02/12/2025)
     """
@@ -62,21 +75,32 @@ class CURN(object):
         assert jnp.any(TNr.any() and TNT.any()) or any(psrs), (
             "Either supply a `psrs` object or provide `TNr` and `TNT` arrays."
         )
+        # Cache some usefull arrays/indices
+        # Most things are inherited from `run_type_object`
         self.delta = delta
         self.device = device_to_run_likelihood_on
         self.run_type_object = run_type_object
         self.Tspan = run_type_object.Tspan
         self.noise_dict = noise_dict
         self.Npulsars = run_type_object.Npulsars
+        self.diag_idx = jnp.arange(0, self.Npulsars, 1, int)
         self.renorm_const = run_type_object.renorm_const
+        
         self.crn_bins = run_type_object.crn_bins
         self.int_bins = run_type_object.int_bins
-        self.diag_idx = jnp.arange(0, self.Npulsars, 1, int)
-        assert self.crn_bins <= self.int_bins
-        self.kmax = 2 * self.int_bins
+        self.dm_bins = run_type_object.dm_bins
+        if self.dm_bins:
+            self.kmax = 2 * self.dm_bins
+            self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.dm_bins, axis=0)
+        else:
+            self.kmax = 2 * self.int_bins
+            self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
         self.k_idx = jnp.arange(0, self.kmax)
         self.total_dim = self.Npulsars * self.kmax
-        self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
+
+        # Prior related book-keeping
+        # In case the user wants to use PTMCM,
+        # we need to turn some things from jax to numpy
         self.lower_prior_lim_all = self.jax_to_numpy(
             self.run_type_object.lower_prior_lim_all
         )
@@ -89,7 +113,12 @@ class CURN(object):
             self.run_type_object.lower_prior_lim_all[self.num_IR_params :]
         )
 
+        # Use the internal enterprise `pta` maker if needed.
+        # Since only the TNT and TNr matricies matter,
+        # some details of the `pta` making process such as 
+        # the form of the GWB PSD does not matter.
         if not TNr.any() and not TNT.any():
+            print('***Making an enterprise `pta` object...')
             tm = gp_signals.MarginalizingTimingModel(use_svd=True)
             wn = blocks.white_noise_block(
                 vary=False,
@@ -153,7 +182,7 @@ class CURN(object):
     """
     Some convenient functions for moving between JAX and Numpy
     depending on the device (dlpack cannot copy between CPU and GPU.)
-    dlpack simply gives you a `view` of the array.
+    dlpack simply gives you a `view` of the array on the same device.
     """
 
     def jax_to_numpy(self, jax_array):
@@ -195,7 +224,8 @@ class CURN(object):
         '''
         A function to return natural log of the CURN likelihood
 
-        param: `xs`: powerlaw model parameters
+        param: `xs`: flattened array of model parameters
+        given in the right order.
         '''
         phi_diagonal, psd_common = self.run_type_object.get_phi_mat_CURN(xs)
         logdet_phis = 2 * jnp.sum(jnp.log(phi_diagonal), axis = 0)
@@ -212,8 +242,10 @@ class CURN(object):
     def get_lnliklihood_from_phi_diag(self, phi_diagonal):
         '''
         A function to return natural log of the CURN likelihood
+        given the diagonal of the phi-matrix
 
-        param: `xs`: powerlaw model parameters
+        param: `xs`: flattened array of model parameters
+        given in the right order.
         '''
         logdet_phis = 2 * jnp.sum(jnp.log(phi_diagonal), axis = 0)
         phiinv = jnp.repeat(1/phi_diagonal.T, 2, axis = 1)
@@ -227,9 +259,11 @@ class CURN(object):
 
     def get_lnprior(self, xs):
         """
-        A function to return natural log uniform-prior
+        A function to return natural log uniform-prior.
+        This is just a wrapper.
 
-        :param: xs: flattened array of model paraemters (`xs`)
+        param: `xs`: flattened array of model parameters
+        given in the right order.
 
         :return: either -infinity or a constant based on the predefined limits of the uniform-prior.
         """
@@ -239,7 +273,8 @@ class CURN(object):
         """
         A function to return natural log prior (uniform)
 
-        param: `xs`: powerlaw model parameters
+        param: `xs`: flattened array of model parameters
+        given in the right order.
         """
         state = np.logical_and(
             xs > self.lower_prior_lim_all, xs < self.upper_prior_lim_all
@@ -279,16 +314,24 @@ class CURN(object):
         """
         A function to perform the sampling using PTMCMC
 
-        :param the initial guess `x0` of all model parameters
-        :param niter: the number of sampling iterations
-        :param savedir: the directory to save the chains
-        :param resume: do you want to resume from a saved chain?
-        :param seed: rng seed!
-        :param sample_enterprise: do you want to sample the internal pta object?
-        :param LU_decomp: do you want to use the PLU decomposed likelihood?
+        :param x0:
+            the initial guess `x0` of all model parameters
+        :param niter: 
+            the number of sampling iterations
+        :param savedir: 
+            the directory to save the chains
+        :param resume: 
+            do you want to resume from a saved chain?
+        :param seed: 
+            rng seed!
+        :param sample_enterprise: 
+            do you want to sample the internal pta object?
+        :param LU_decomp: 
+            do you want to use the PLU decomposed likelihood?
         """
         if not np.any(x0):
             x0 = self.make_initial_guess_numpy(seed)
+
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
         groups = [list(np.arange(0, ndim))]
@@ -306,6 +349,7 @@ class CURN(object):
                 resume=resume,
             )
         else:
+            print('***Sampling the internal `pta` object.')
             sampler = ptmcmc(
                 ndim,
                 self.pta.get_lnlikelihood,
@@ -320,7 +364,6 @@ class CURN(object):
         if self.num_IR_params:
             sampler.addProposalToCycle(self.draw_from_red_prior, 10)
         sampler.addProposalToCycle(self.draw_from_nonIR_prior, 10)
-        # TO DO: add proposal for orf parameters in case they exist in the model.
 
         sampler.sample(
             x0,
@@ -374,25 +417,40 @@ class CURN(object):
 
 class MultiPulsarModel(object):
     """
-    A class to calculate full likelihood based on given IRN + GWB models (no deterministic signal)
+    A class to calculate the full likelihood (with correlations)
 
-    :param run_type_object: a class from `run_types.py`
-    :param device_to_run_likelihood_on: the device (cpu, gpu, cuda, METAL) to perform likelihood calculation on.
-    :param psrs: an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
-    :param TNr: the so-called TNr matrix. It is the product of the basis matrix `F`
-    with the inverse of the timing marginalized white noise covaraince matrix D and the timing residulas `r`.
-    The naming convension should read FD^-1r but TNr is a more well-known name for this quantity!
-    :param TNT: the so-called TNT matrix. It is the product of the basis matrix `F`
-    with the inverse of the timing marginalized white noise covaraince matrix D and the `F` transpose matrix.
-    The naming convension should read FD^-1F but TNT is a more well-known name for this quantity (it sounds dynamite!)
-    :param: noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
-    :param: backend: the telescope backend. Ignored if `TNr` and `TNT` is supplied
-    :param: tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
-    :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
-    :param: del_pta_after_init: do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
-    :param: matrix_stabilization: performing some matrix stabilization on the `TNT` matrix.
-    :param: the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
-    if `matrix_stabilization` is set to False, this has no efect.
+    :param run_type_object: 
+        a class from `run_types.py`
+    :param device_to_run_likelihood_on: 
+        the device (cpu, gpu, cuda, METAL) to perform likelihood calculation on.
+    :param psrs: 
+        an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
+    :param TNr: 
+        the so-called TNr matrix. It is the product of the basis matrix `F`
+        with the inverse of the timing marginalized white noise covaraince
+        matrix D and the timing residulas `r`.The naming convension should read 
+        FD^-1r but TNr is easy to pronounce.
+    :param TNT: 
+        the so-called TNT matrix. It is the product of the basis matrix `F`
+        with the inverse of the timing marginalized white noise covaraince
+        matrix D and the `F` transpose matrix. The naming convension should read
+        FD^-1F but TNT just sounds dynamite!
+    :param: 
+        noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
+    :param: backend: 
+        the telescope backend. Ignored if `TNr` and `TNT` is supplied
+    :param: 
+        tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
+    :param: 
+        inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
+    :param: del_pta_after_init: 
+        do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
+    :param: matrix_stabilization: 
+        performing some matrix stabilization on the `TNT` matrix.
+    :param: delta
+        the amount by which the diagonal of the correlation version of TNT is added by.
+        This stabilizes the TNT matrix. If `matrix_stabilization` is set to False, this has no efect.
+
     Author:
     Nima Laal (02/12/2025)
     """
@@ -415,7 +473,8 @@ class MultiPulsarModel(object):
         assert jnp.any(TNr.any() and TNT.any()) or any(psrs), (
             "Either supply a `psrs` object or provide `TNr` and `TNT` arrays."
         )
-
+        # Cache some usefull arrays/indices
+        # Most things are inherited from `run_type_object`
         self.delta = delta
         self.device = device_to_run_likelihood_on
         self.run_type_object = run_type_object
@@ -425,10 +484,18 @@ class MultiPulsarModel(object):
         self.renorm_const = run_type_object.renorm_const
         self.crn_bins = run_type_object.crn_bins
         self.int_bins = run_type_object.int_bins
-        assert self.crn_bins <= self.int_bins
-        self.kmax = 2 * self.int_bins
+        self.dm_bins = run_type_object.dm_bins
+        if self.dm_bins:
+            self.kmax = 2 * (self.dm_bins + self.int_bins)
+            # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.dm_bins, axis=0)
+        else:
+            self.kmax = 2 * self.int_bins
+            # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
         self.k_idx = jnp.arange(0, self.kmax)
-        self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
+        
+        # Prior related book-keeping
+        # In case the user wants to use PTMCM,
+        # we need to turn some things from jax to numpy
         self.lower_prior_lim_all = self.jax_to_numpy(
             self.run_type_object.lower_prior_lim_all
         )
@@ -441,6 +508,10 @@ class MultiPulsarModel(object):
             self.run_type_object.lower_prior_lim_all[self.num_IR_params:]
         )
 
+        # Use the internal enterprise `pta` maker if needed.
+        # Since only the TNT and TNr matricies matter,
+        # some details of the `pta` making process such as 
+        # the form of the GWB PSD does not matter.
         if not TNr.any() and not TNT.any():
             tm = gp_signals.MarginalizingTimingModel(use_svd=True)
             wn = blocks.white_noise_block(
@@ -509,6 +580,7 @@ class MultiPulsarModel(object):
             )
 
     ##################################################################
+
     """
     Some convenient functions for moving between JAX and Numpy
     depending on the device (dlpack cannot copy between CPU and GPU.)
@@ -583,10 +655,12 @@ class MultiPulsarModel(object):
         ).sum()
 
     @partial(jax.jit, static_argnums=(0,))
-    def get_lnliklihood(self, xs):
+    def get_lnliklihood_slow(self, xs):
         """
         Calculates the log-likelihood of a multi-pulsar noise-modeling (no deterministic signal)
-
+        NOTE: This function does not call the optimized `get_phi_mat_inv` function. So, depending on the
+        size of the phi matrix, this could be slower than it should be!
+        
         :param: xs: flattened array of model paraemters (`xs`)
 
         :return: returns the natural-log-likelihood
@@ -600,6 +674,20 @@ class MultiPulsarModel(object):
         # (n_freq, n_pulsar, n_pulsar) instead of
         # (2*n_freq, n_pulsar, n_pulsar).
         phiinv_dense = jnp.repeat(jsp.linalg.cho_solve(cp, self._eye), 2, axis=0)
+        expval, logdet_sigma = self.get_mean(phiinv_dense)
+        return 0.5 * (jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def get_lnliklihood(self, xs):
+        """
+        Calculates the log-likelihood of a multi-pulsar noise-modeling (no deterministic signal)
+
+        :param: xs: flattened array of model paraemters (`xs`)
+
+        :return: returns the natural-log-likelihood
+        """
+        phi = self.run_type_object.get_phi_mat(xs)
+        phiinv_dense, logdet_phi = self.run_type_object.get_phi_mat_inv(phi)
         expval, logdet_sigma = self.get_mean(phiinv_dense)
         return 0.5 * (jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi)
 
@@ -659,7 +747,7 @@ class MultiPulsarModel(object):
         """
         A function to return natural log prior (uniform)
 
-        param: `xs`: powerlaw model parameters
+        :param: xs: flattened array of model paraemters (`xs`)
         """
         state = np.logical_and(
             xs > self.lower_prior_lim_all, xs < self.upper_prior_lim_all
@@ -696,25 +784,46 @@ class MultiPulsarModel(object):
         seed=None,
         sample_enterprise=False,
         LU_decomp=False,
+        include_groups = True,
+        include_IRN_groups = False,
     ):
         """
         A function to perform the sampling using PTMCMC
 
-        :param the initial guess `x0` of all model parameters
-        :param niter: the number of sampling iterations
-        :param savedir: the directory to save the chains
-        :param resume: do you want to resume from a saved chain?
-        :param seed: rng seed!
-        :param sample_enterprise: do you want to sample the internal pta object?
-        :param LU_decomp: do you want to use the PLU decomposed likelihood?
-        """
+        :param x0:
+            the initial guess `x0` of all model parameters
+        :param niter: 
+            the number of sampling iterations
+        :param savedir:
+             the directory to save the chains
+        :param resume: 
+            do you want to resume from a saved chain?
+        :param seed: 
+            rng seed!
+        :param sample_enterprise: 
+            do you want to sample the internal pta object?
+        :param LU_decomp: 
+            do you want to use the PLU decomposed likelihood?
+        :param include_groups:
+            manual `groups` needed for PTMCMC
+        : param: include_IRN_groups
+            do you want non-GWB groups for PTMCMC?
+        """ 
         if not np.any(x0):
             x0 = self.make_initial_guess_numpy(seed)
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
+
         groups = [list(np.arange(0, ndim))]
-        nonIR_idxs = np.array(range(self.num_IR_params, x0.shape[0]))
-        [groups.append(nonIR_idxs) for ii in range(2)]
+        if include_IRN_groups:
+            IR_idxs = np.array(range(0, self.num_IR_params))
+            [groups.append(IR_idxs) for ii in range(2)]            
+        if include_groups:
+            nonIR_idxs = np.array(range(self.num_IR_params, x0.shape[0]))
+            [groups.append(nonIR_idxs) for ii in range(2)]
+            if not self.run_type_object.orf_fixed:
+                orf_idxs = np.array(range(self.run_type_object.gwb_psd_params_end_idx, ndim))
+                [groups.append(orf_idxs) for ii in range(2)]
 
         if not sample_enterprise:
             if not LU_decomp:
@@ -753,7 +862,8 @@ class MultiPulsarModel(object):
         if self.num_IR_params:
             sampler.addProposalToCycle(self.draw_from_red_prior, 10)
         sampler.addProposalToCycle(self.draw_from_nonIR_prior, 10)
-        # TO DO: add proposal for orf parameters in case they exist in the model.
+        if not self.run_type_object.orf_fixed:
+            sampler.addProposalToCycle(self.draw_from_orf_prior, 10)
 
         sampler.sample(
             x0,
@@ -802,6 +912,20 @@ class MultiPulsarModel(object):
 
         # randomly choose parameter
         param_idx = random.randint(self.num_IR_params, x.shape[0] - 1)
+        q[param_idx] = self.make_initial_guess_numpy()[param_idx]
+        return q, float(lqxy)
+
+    def draw_from_orf_prior(self, x, iter, beta):
+        """Prior draw.
+
+        The function signature is specific to PTMCMCSampler.
+        """
+
+        q = x.copy()
+        lqxy = 0
+
+        # randomly choose parameter
+        param_idx = random.randint(self.run_type_object.gwb_psd_params_end_idx, x.shape[0] - 1)
         q[param_idx] = self.make_initial_guess_numpy()[param_idx]
         return q, float(lqxy)
 
@@ -1159,7 +1283,18 @@ class AstroInferenceModel(object):
         :param resume: do you want to resume from a saved chain?
         """
         if not x0.any():
-            x0 = self.make_initial_guess()
+            for _ in range(100):
+                x0 = self.make_initial_guess()
+                calc = self.get_lnliklihood(x0)
+                if np.isfinite(x0).all():
+                    print(f'The initial likelihood is {calc}')
+                    break
+                else:
+                    continue
+            if _ == 99:
+                print('The likelihood is ill-defined!')
+                return 0
+
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
         groups = [list(np.arange(0, ndim))]
@@ -1846,8 +1981,21 @@ class KDE(object):
 
     :param run_type_object: a class from `run_types.py`
     :param device_to_run_likelihood_on: the device (cpu, gpu, cuda, METAL) to perform likelihood calculation on.
-    :param grid: the grid used for KDEs. The shape must be (n_f, n_p)
-    :param den: the KDE values. The shape must be (n_f, n_p)
+    :param psrs: an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
+    :param TNr: the so-called TNr matrix. It is the product of the basis matrix `F`
+    with the inverse of the timing marginalized white noise covaraince matrix D and the timing residulas `r`.
+    The naming convension should read FD^-1r but TNr is a more well-known name for this quantity!
+    :param TNT: the so-called TNT matrix. It is the product of the basis matrix `F`
+    with the inverse of the timing marginalized white noise covaraince matrix D and the `F` transpose matrix.
+    The naming convension should read FD^-1F but TNT is a more well-known name for this quantity (it sounds dynamite!)
+    :param: noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
+    :param: backend: the telescope backend. Ignored if `TNr` and `TNT` is supplied
+    :param: tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
+    :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
+    :param: del_pta_after_init: do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
+    :param: matrix_stabilization: performing some matrix stabilization on the `TNT` matrix.
+    :param: the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
+    if `matrix_stabilization` is set to False, this has no efect.
     Author:
     Nima Laal (02/12/2025)
     """
@@ -1935,7 +2083,7 @@ class KDE(object):
         '''
         A function to return natural log of the CURN likelihood
 
-        param: `xs`: PSD model parameters
+        param: `xs`: powerlaw model parameters
         '''
         phi_diagonal, psd_common = self.run_type_object.get_phi_mat_CURN(xs)
         idxs = jnp.searchsorted(self.grid, 0.5 * jnp.log10(phi_diagonal), method = self.search_method) - 1
@@ -2087,3 +2235,4 @@ class KDE(object):
         param_idx = random.randint(self.num_IR_params, x.shape[0] - 1)
         q[param_idx] = self.make_initial_guess_numpy()[param_idx]
         return q, float(lqxy)
+

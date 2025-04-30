@@ -262,14 +262,14 @@ def varied_gamma_bin_orf_pl(
                 [
                     lower_amp + logamp_offset,
                     lower_gamma,
-                    *jnp.ones(len(GWBFunctions.bins_decent)) * -1.0,
+                    *jnp.ones(len(GWBFunctions.bins_decent)-1) * -1.0,
                 ]
             ),
             upper_bound_array=jnp.array(
                 [
                     upper_amp + logamp_offset,
                     upper_gamma,
-                    *jnp.ones(len(GWBFunctions.bins_decent)) * 1.0,
+                    *jnp.ones(len(GWBFunctions.bins_decent)-1) * 1.0,
                 ]
             ),
             fixed_gwb_psd_param_values=[],
