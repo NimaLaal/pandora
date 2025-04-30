@@ -966,16 +966,15 @@ class UniformPriorDM(object):
         phiinv = phiinv.at[self.GWB_fidxs].set(jsp.linalg.cho_solve(cp, self._eye))
         logdet_phi = 2 * jnp.sum(jnp.log(cp[0].diagonal(axis1=-2, axis2=-1)))
         
-        #DM PSD
+        #DM part needs a simple inversion
         diags_dm = phi[self.DM_fidxs].diagonal(axis1 = -2, axis2 = -1)
+        phiinv = phiinv.at[self.KDM, self.DIRDM, self.DIRDM].set(1/diags_dm)
 
-        #uncorrelated part needs a simple inversion
+        #No GWB part needs a simple inversion
         if self.separate_inversion_strat:
             diags = phi[self.nonGWB_fidxs].diagonal(axis1 = -2, axis2 = -1)
-
             phiinv = phiinv.at[self.KIR, self.DIR, self.DIR].set(1/diags)
-            phiinv = phiinv.at[self.KDM, self.DIRDM, self.DIRDM].set(1/diags_dm)
-
+            
             return jnp.repeat(phiinv, 2, axis = 0), \
                 2 * (logdet_phi + jnp.sum(jnp.log(diags)) + jnp.sum(jnp.log(diags_dm)))
         else:
@@ -1066,7 +1065,7 @@ class UniformPriorGwbOnly(object):
 
     :param gwb_helper_dictionary: 
         the helper dictionary from `utils.py` script
-        
+
     :param renorm_const: 
         the factor by which the units are going to change. 
         Set it to `1` for no unit change.
