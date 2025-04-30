@@ -872,9 +872,9 @@ class UniformPriorDM(object):
                                                 gwb_psd_params)
 
         phi = jnp.zeros((self.dm_bins + self.int_bins, self.Npulsars, self.Npulsars))
-        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index, self.diag_idx, self.diag_idx].set(phi_irn)
-        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index, self.diag_idx, self.diag_idx].set(phi_dm)
-        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index, self.diag_idx, self.diag_idx].set(psd_common)
+        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index, self.diag_idx, self.diag_idx].add(phi_irn)
+        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index, self.diag_idx, self.diag_idx].add(phi_dm)
+        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index, self.diag_idx, self.diag_idx].add(psd_common)
 
         if self.orf_fixed:
             return phi.at[self.KGW, self.I, self.J].set(
@@ -907,10 +907,10 @@ class UniformPriorDM(object):
                                                 gwb_psd_params)
 
         phi = jnp.zeros((self.dm_bins + self.int_bins, self.Npulsars))
-        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index].set(phi_irn)
-        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index].set(phi_dm)
-        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index].set(psd_common)
-        return phi
+        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index].add(phi_irn)
+        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index].add(phi_dm)
+        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index].add(psd_common)
+        return phi, psd_common
 
     @partial(jax.jit, static_argnums=(0,))
     def get_phi_mat_and_common_psd(self, xs):
@@ -933,9 +933,9 @@ class UniformPriorDM(object):
                                                 gwb_psd_params)
 
         phi = jnp.zeros((self.dm_bins + self.int_bins, self.Npulsars, self.Npulsars))
-        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index, self.diag_idx, self.diag_idx].set(phi_irn)
-        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index, self.diag_idx, self.diag_idx].set(phi_dm)
-        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index, self.diag_idx, self.diag_idx].set(psd_common)
+        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index, self.diag_idx, self.diag_idx].add(phi_irn)
+        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index, self.diag_idx, self.diag_idx].add(phi_dm)
+        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index, self.diag_idx, self.diag_idx].add(psd_common)
 
         if self.orf_fixed:
             return phi.at[self.KGW, self.I, self.J].set(
