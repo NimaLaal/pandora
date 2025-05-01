@@ -1109,6 +1109,26 @@ class UniformPriorGwbOnly(object):
         self.lower_prior_lim_all = jnp.array(gwb_helper_dictionary["gwb_psd_param_lower_lim"])
         self.num_IR_params = 0
 
+        # Below, calculates the angular separation as well as their indices (between pairs of pulsars) based on
+        # their positions and stores them in the GPU/CPU memory.
+        I, J = np.tril_indices(self.Npulsars)
+        a = np.zeros(self.ppair_number, dtype=int)
+        b = np.zeros(self.ppair_number, dtype=int)
+        ct = 0
+        # I know there is a better way to do this, but this is the most readable way!
+        for i, j in zip(I, J):
+            if not i == j:
+                a[ct] = i
+                b[ct] = j
+                ct += 1
+        # `xi` is the angular separation
+        self.xi = jnp.array(
+            [np.arccos(np.dot(self.psr_pos[I], self.psr_pos[J])) for I, J in zip(a, b)]
+        )
+        # I and J are the cross-correlation indices
+        self.I = jnp.array(a)
+        self.J = jnp.array(b)
+
         psd_func_sigs = np.array(
             [
                 str(_)
@@ -1178,26 +1198,6 @@ class UniformPriorGwbOnly(object):
         else:
             self.orf_val = orf_func(self.xi)
             self.orf_fixed = True
-
-        # Below, calculates the angular separation as well as their indices (between pairs of pulsars) based on
-        # their positions and stores them in the GPU/CPU memory.
-        I, J = np.tril_indices(self.Npulsars)
-        a = np.zeros(self.ppair_number, dtype=int)
-        b = np.zeros(self.ppair_number, dtype=int)
-        ct = 0
-        # I know there is a better way to do this, but this is the most readable way!
-        for i, j in zip(I, J):
-            if not i == j:
-                a[ct] = i
-                b[ct] = j
-                ct += 1
-        # `xi` is the angular separation
-        self.xi = jnp.array(
-            [np.arccos(np.dot(self.psr_pos[I], self.psr_pos[J])) for I, J in zip(a, b)]
-        )
-        # I and J are the cross-correlation indices
-        self.I = jnp.array(a)
-        self.J = jnp.array(b)
 
         if renorm_const != 1:
             warnings.warn(
