@@ -73,9 +73,9 @@ class SimGWBFromPhi(object):
         return res
     
     def write_to_psrs(self, residual_list, overwrite = False):
-        psrs_copy = copy.deepcopy(self.psrs)
         ans = []
         for rr in tqdm(range(self.real)):
+            psrs_copy = copy.deepcopy(self.psrs)
             for pidx, psr in enumerate(psrs_copy):
                 
                 psr._toas = self.toas[pidx]

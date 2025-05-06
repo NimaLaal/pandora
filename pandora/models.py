@@ -1109,6 +1109,9 @@ class UniformPriorGwbOnly(object):
         self.lower_prior_lim_all = jnp.array(gwb_helper_dictionary["gwb_psd_param_lower_lim"])
         self.num_IR_params = 0
 
+        # Cache an identity matrix
+        self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.crn_bins, axis=0)
+        
         # Below, calculates the angular separation as well as their indices (between pairs of pulsars) based on
         # their positions and stores them in the GPU/CPU memory.
         I, J = np.tril_indices(self.Npulsars)
@@ -1271,7 +1274,7 @@ class UniformPriorGwbOnly(object):
         phi = jnp.zeros((self.crn_bins, self.Npulsars, self.Npulsars))
         phi = phi.at[:, self.diag_idx, self.diag_idx].set(phi_diag)
         if self.orf_fixed:
-            return phi.at[: self.crn_bins, self.I, self.J].set(
+            return phi.at[:, self.I, self.J].set(
                 self.orf_val * psd_common
             )
         else:
@@ -1311,6 +1314,24 @@ class UniformPriorGwbOnly(object):
             return phi.at[:, self.I, self.J].set(
                 self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :]) * psd_common
             ), psd_common
+
+    @partial(jax.jit, static_argnums=(0,))
+    def get_phi_mat_inv(self, phi):
+        """
+        Constructs the phiinv-matrix based on a given phi-matrix
+        The correlated bins are treated differently from the 
+        uncorrelated bins as the uncorrelated bins do not need
+        a Cholesky decomposition.
+
+        :param phi: red noise covaraince matrix
+
+        :return: the phiinv-matrix` with dimensions `(2n_f,n_p, n_p)`
+                as well as the log-determinat of phi
+        """
+        cp = jsp.linalg.cho_factor(phi, lower=True)
+        phiinv = jsp.linalg.cho_solve(cp, self._eye)
+        logdet_phi = 4 * jnp.sum(jnp.log(cp[0].diagonal(axis1=-2, axis2=-1)))
+        return jnp.repeat(phiinv, 2, axis = 0), logdet_phi
 
     @partial(jax.jit, static_argnums=(0,))
     def get_lnprior(self, xs):
