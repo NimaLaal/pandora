@@ -22,32 +22,43 @@ class CURN(object):
 
     :param run_type_object: 
         a class from `models.py`
+
     :param device_to_run_likelihood_on: 
         the device (cpu, cuda, METAL) to perform likelihood calculation on.
+
     :param psrs: 
         an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
+
     :param TNr: 
         the so-called TNr matrix. It is the product of the basis matrix `F`
         with the inverse of the timing marginalized white noise covaraince
         matrix D and the timing residulas `r`.The naming convension should read 
         FD^-1r but TNr is easy to pronounce.
+
     :param TNT: 
         the so-called TNT matrix. It is the product of the basis matrix `F`
         with the inverse of the timing marginalized white noise covaraince
         matrix D and the `F` transpose matrix. The naming convension should read
         FD^-1F but TNT just sounds dynamite!
+
     :param: noise_dict: 
         the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
+
     :param: backend: 
         the telescope backend. Ignored if `TNr` and `TNT` is supplied
+
     :param: tnequad: 
         do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
+
     :param: inc_ecorr: 
         do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
+
     :param: del_pta_after_init: 
         do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
+
     :param: matrix_stabilization: 
         performing some matrix stabilization on the `TNT` matrix.
+
     :param: delta
         the amount by which the diagonal of the correlation version of TNT is added by.
         This stabilizes the TNT matrix.if `matrix_stabilization` is set to False, 
@@ -420,33 +431,41 @@ class MultiPulsarModel(object):
     A class to calculate the full likelihood (with correlations)
 
     :param run_type_object: 
-        a class from `run_types.py`
+        a class from `models.py`
+
     :param device_to_run_likelihood_on: 
         the device (cpu, gpu, cuda, METAL) to perform likelihood calculation on.
+
     :param psrs: 
         an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
+
     :param TNr: 
         the so-called TNr matrix. It is the product of the basis matrix `F`
         with the inverse of the timing marginalized white noise covaraince
         matrix D and the timing residulas `r`.The naming convension should read 
         FD^-1r but TNr is easy to pronounce.
+
     :param TNT: 
         the so-called TNT matrix. It is the product of the basis matrix `F`
         with the inverse of the timing marginalized white noise covaraince
         matrix D and the `F` transpose matrix. The naming convension should read
         FD^-1F but TNT just sounds dynamite!
-    :param: 
-        noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
+
+    :param: noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
+
     :param: backend: 
         the telescope backend. Ignored if `TNr` and `TNT` is supplied
-    :param: 
-        tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
-    :param: 
-        inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
+
+    :param: tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
+
+    :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
+
     :param: del_pta_after_init: 
         do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
+
     :param: matrix_stabilization: 
         performing some matrix stabilization on the `TNT` matrix.
+
     :param: delta
         the amount by which the diagonal of the correlation version of TNT is added by.
         This stabilizes the TNT matrix. If `matrix_stabilization` is set to False, this has no efect.
@@ -490,7 +509,7 @@ class MultiPulsarModel(object):
             # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.dm_bins, axis=0)
         else:
             self.kmax = 2 * self.int_bins
-            # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
+            self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
         self.k_idx = jnp.arange(0, self.kmax)
         
         # Prior related book-keeping
@@ -931,30 +950,75 @@ class MultiPulsarModel(object):
 
 class AstroInferenceModel(object):
     """
-    A class to calculate likelihood based on a given IRN + GWB model (no deterministic signal) as well as as a normalizing flow astroemulator
+    A class to calculate likelihood based on a given IRN + GWB model (no deterministic signal) 
+    as well as as a normalizing flow astroemulator
 
-    :param nf_dist: the normalizing flow object
-    :param num_astro_params: the number of astro parameters
-    :param astr_prior_lower_lim: the lower bound for the astro parameters
-    :param astr_prior_upper_lim: the upper bound for the astro parameters
-    :param astro_additional_prior_func: if you want non-uniform prior on the astro parameters, supply a numpy-compatible function to calculate
-                                        the natural-log of the prior given the astro-parameters.
-    :param run_type_object: a class from `run_types.py`
-    :param psrs: an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
-    :param TNr: the so-called TNr matrix. It is the product of the basis matrix `F`
-    with the inverse of the timing marginalized white noise covaraince matrix D and the timing residulas `r`.
-    The naming convension should read FD^-1r but TNr is a more well-known name for this quantity!
-    :param TNT: the so-called TNT matrix. It is the product of the basis matrix `F`
-    with the inverse of the timing marginalized white noise covaraince matrix D and the `F` transpose matrix.
-    The naming convension should read FD^-1F but TNT is a more well-known name for this quantity (it sounds dynamite!)
-    :param: noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
-    :param: backend: the telescope backend. Ignored if `TNr` and `TNT` is supplied
-    :param: tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
-    :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
-    :param: del_pta_after_init: do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
-    :param: matrix_stabilization: performing some matrix stabilization on the `TNT` matrix.
-    :param: the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
-    if `matrix_stabilization` is set to False, this has no efect.
+    :param nf_dist: 
+        the normalizing flow object
+
+    :param num_astro_params: 
+        the number of astro parameters
+
+    :param astr_prior_lower_lim: 
+        the lower bound for the astro parameters
+
+    :param astr_prior_upper_lim:
+        the upper bound for the astro parameters
+
+    :param astro_additional_prior_func: 
+        if you want non-uniform prior on the astro parameters, 
+        supply a numpy-compatible function to calculate
+        the natural-log of the prior given the astro-parameters.
+
+    :param run_type_object: 
+        a class from `models.py`
+
+    :param psrs: 
+        an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
+
+    :param device_to_run_likelihood_on :
+        the hardware used for calculating the likelihood
+
+    :param: astro_param_fixed_values
+        the value of the astro parameters wanting to fix. The order must match the order of NF training
+
+    :param: astro_param_fixed_indices
+        the indices of the astro parameters wanting to fix. Keep the order ascending
+
+    :param TNr: 
+        the so-called TNr matrix. It is the product of the basis matrix `F`
+        with the inverse of the timing marginalized white noise covaraince
+        matrix D and the timing residulas `r`.The naming convension should read 
+        FD^-1r but TNr is easy to pronounce.
+
+    :param TNT: 
+        the so-called TNT matrix. It is the product of the basis matrix `F`
+        with the inverse of the timing marginalized white noise covaraince
+        matrix D and the `F` transpose matrix. The naming convension should read
+        FD^-1F but TNT just sounds dynamite!
+
+    :param: noise_dict: 
+        the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
+
+    :param: backend: 
+        the telescope backend. Ignored if `TNr` and `TNT` is supplied
+
+    :param: tnequad: 
+        do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
+
+    :param: inc_ecorr: 
+        do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
+
+    :param: del_pta_after_init: 
+        do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
+
+    :param: matrix_stabilization: 
+        performing some matrix stabilization on the `TNT` matrix.
+
+    :param: delta: 
+        the amount by which the diagonal of the correlation version of TNT is added by. This stabilizes the TNT matrix.
+        if `matrix_stabilization` is set to False, this has no efect.
+
     Author:
     Nima Laal (02/12/2025)
     """
@@ -968,6 +1032,7 @@ class AstroInferenceModel(object):
         astro_additional_prior_func,
         run_type_object,
         psrs,
+        device_to_run_likelihood_on = 'cuda',
         astro_param_fixed_values = np.array([False]), 
         astro_param_fixed_indices =np.array([False]), 
         fixed_spectrum = np.array([False]),
@@ -980,32 +1045,41 @@ class AstroInferenceModel(object):
         del_pta_after_init=True,
         matrix_stabilization=True,
         delta = 1e-6,
-    ):
-        #assert jnp.any(TNr.any() and TNT.any()) or any(psrs), (
-         #   "Either supply a `psrs` object or provide `TNr` and `TNT` arrays."
-        #)
-        self.delta = delta
-        self.nf_dist = nf_dist
-        self.run_type_object = run_type_object
-        self.Npulsars = run_type_object.Npulsars
-        self.astro_additional_prior_func = astro_additional_prior_func
-        self.num_astro_params = num_astro_params
-        self.num_IR_params = self.run_type_object.num_IR_params 
-
-        self.num_gwb_params = len(
-            self.run_type_object.lower_prior_lim_all[self.num_IR_params:]
+    ):        
+        assert jnp.any(TNr.any() and TNT.any()) or any(psrs), (
+            "Either supply a `psrs` object or provide `TNr` and `TNT` arrays."
         )
+
+        # NF-related objects
+        self.astro_additional_prior_func = astro_additional_prior_func
+        self.nf_dist = nf_dist
+        self.num_astro_params = num_astro_params
+
+        # Cache some usefull arrays/indices
+        # Most things are inherited from `run_type_object`
+        self.delta = delta
+        self.device = device_to_run_likelihood_on
+        self.run_type_object = run_type_object
+        self.num_IR_params = self.run_type_object.num_IR_params 
         self.Tspan = run_type_object.Tspan
         self.noise_dict = noise_dict
+        self.Npulsars = run_type_object.Npulsars
         self.renorm_const = run_type_object.renorm_const
-        self.log_offset = 0.5 * np.log10(self.renorm_const)
         self.crn_bins = run_type_object.crn_bins
         self.int_bins = run_type_object.int_bins
-        assert self.crn_bins <= self.int_bins
-        self.kmax = 2 * self.int_bins
+        self.dm_bins = run_type_object.dm_bins
+        self.log_offset = 0.5 * np.log10(self.renorm_const)
+        if self.dm_bins:
+            self.kmax = 2 * (self.dm_bins + self.int_bins)
+            # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.dm_bins, axis=0)
+        else:
+            self.kmax = 2 * self.int_bins
+            # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
         self.k_idx = jnp.arange(0, self.kmax)
-        self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
-
+        
+        # Prior related book-keeping
+        # In case the user wants to use PTMCM,
+        # we need to turn some things from jax to numpy
         self.lower_prior_lim_all = np.concatenate(
             (
                 self.run_type_object.lower_prior_lim_all,
@@ -1039,74 +1113,78 @@ class AstroInferenceModel(object):
         assert len(self.make_initial_guess()) == len(run_type_object.upper_prior_lim_all) + self.num_varied_astro_params, \
         'You have chosen to fix some astro parameters. Make sure your prior also reflects this choice!'
 
-        if not fixed_spectrum.any():
-            if not TNr.any() and not TNT.any():
-                tm = gp_signals.MarginalizingTimingModel(use_svd=True)
-                wn = blocks.white_noise_block(
-                    vary=False,
-                    inc_ecorr=inc_ecorr,
-                    gp_ecorr=False,
-                    select=backend,
-                    tnequad=tnequad,
-                )
-                if self.num_IR_params:
-                    rn = blocks.red_noise_block(
-                        psd="powerlaw",
-                        prior="log-uniform",
-                        Tspan=self.Tspan,
-                        components=self.int_bins,
-                        gamma_val=None,
-                    )
-                
-                gwb = blocks.common_red_noise_block(
+        # Use the internal enterprise `pta` maker if needed.
+        # Since only the TNT and TNr matricies matter,
+        # some details of the `pta` making process such as 
+        # the form of the GWB PSD does not matter.
+        if not TNr.any() and not TNT.any():
+            tm = gp_signals.MarginalizingTimingModel(use_svd=True)
+            wn = blocks.white_noise_block(
+                vary=False,
+                inc_ecorr=inc_ecorr,
+                gp_ecorr=False,
+                select=backend,
+                tnequad=tnequad,
+            )
+            if self.num_IR_params:
+                rn = blocks.red_noise_block(
                     psd="powerlaw",
                     prior="log-uniform",
                     Tspan=self.Tspan,
-                    components=self.crn_bins,
-                    gamma_val=13 / 3,
-                    name="gw",
-                    orf="hd",
+                    components=self.int_bins,
+                    gamma_val=None,
                 )
-                if self.num_IR_params:
-                    s = tm + wn + rn + gwb
-                else:
-                    s = tm + wn + gwb
-
-                self.pta = signal_base.PTA(
-                    [s(p) for p in psrs], signal_base.LogLikelihoodDenseCholesky
-                )
-                self.pta.set_default_params(self.noise_dict)
-
-                self._TNr = jnp.concatenate(self.pta.get_TNr(params={})) / jnp.sqrt(
-                    self.renorm_const
-                )
-                self._TNT = jnp.array(
-                    sl.block_diag(*self.pta.get_TNT(params={})) / self.renorm_const
-                )
-                if del_pta_after_init:
-                    del self.pta
+            gwb = blocks.common_red_noise_block(
+                psd="spectrum",
+                prior="log-uniform",
+                Tspan=self.Tspan,
+                components=self.crn_bins,
+                gamma_val=13 / 3,
+                name="gw",
+                orf="hd",
+            )
+            if self.num_IR_params:
+                s = tm + wn + rn + gwb
             else:
-                self._TNr = TNr / jnp.sqrt(self.renorm_const)
-                self._TNT = TNT / self.renorm_const
+                s = tm + wn + gwb
 
-            ##############Make TNT More Stable:
-            if matrix_stabilization:
-                print(f"The delta is {self.delta}")
-                print(
-                    f"Condition number of the TNT matrix before stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
-                )
-                D = jnp.outer(
-                    jnp.sqrt(self._TNT.diagonal()), jnp.sqrt(self._TNT.diagonal())
-                )
-                corr = self._TNT / D
-                corr = corr + self.delta * jnp.eye(self._TNT.shape[0])
-                self._TNT = D * corr / (1 + self.delta)
-                # evals, evecs = jnp.linalg.eigh(corr)
-                # corr = jnp.dot(evecs * jnp.maximum(evals, self.delta), evecs.T)
-                # self._TNT = D * corr
-                print(
-                    f"Condition number of the TNT matrix after stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
-                )
+            self.pta = signal_base.PTA(
+                [s(p) for p in psrs], signal_base.LogLikelihoodDenseCholesky
+            )
+            self.pta.set_default_params(self.noise_dict)
+
+            self._TNr = jnp.concatenate(self.pta.get_TNr(params={})) / jnp.sqrt(
+                self.renorm_const
+            )
+            self._TNT = jnp.array(
+                sl.block_diag(*self.pta.get_TNT(params={})) / self.renorm_const
+            )
+            if del_pta_after_init:
+                del self.pta
+        else:
+            self._TNr = TNr / jnp.sqrt(self.renorm_const)
+            self._TNT = TNT / self.renorm_const
+
+        ##############Make TNT More Stable:
+        if matrix_stabilization:
+            print(f"The delta is {self.delta}")
+            print(
+                f"Condition number of the TNT matrix before stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
+            )
+            D = jnp.outer(
+                jnp.sqrt(self._TNT.diagonal()), jnp.sqrt(self._TNT.diagonal())
+            )
+            corr = self._TNT / D
+            corr = corr + self.delta * jnp.eye(self._TNT.shape[0])
+            self._TNT = D * corr / (1 + self.delta)
+            # evals, evecs = jnp.linalg.eigh(corr)
+            # corr = jnp.dot(evecs * jnp.maximum(evals, self.delta), evecs.T)
+            # self._TNT = D * corr
+            print(
+                f"Condition number of the TNT matrix after stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
+            )
+
+    ##################################################################
 
     @partial(jax.jit, static_argnums=(0,))
     def to_ent_phiinv(self, phiinv):
@@ -1147,18 +1225,9 @@ class AstroInferenceModel(object):
         :return: returns the natural-log-likelihood
         """
         phi, psd_common = self.run_type_object.get_phi_mat_and_common_psd(xs)
-        cp = jsp.linalg.cho_factor(phi, lower=True)
-        logdet_phi = 4 * jnp.sum(
-            jnp.log(cp[0].diagonal(axis1=1, axis2=2))
-        )  # Note the use of `4` instead of `2`.
-        # It is needed as the phi-matrix is shaped
-        # (n_freq, n_pulsar, n_pulsar) instead of
-        # (2*n_freq, n_pulsar, n_pulsar).
-        phiinv_dense = jnp.repeat(jsp.linalg.cho_solve(cp, self._eye), 2, axis=0)
+        phiinv_dense, logdet_phi = self.run_type_object.get_phi_mat_inv(phi)
         expval, logdet_sigma = self.get_mean(phiinv_dense)
-        return 0.5 * (
-            jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi
-        ), psd_common
+        return 0.5 * (jnp.dot(self._TNr, expval) - logdet_sigma - logdet_phi), psd_common
 
     def get_lnliklihood(self, xs):
         """
@@ -1209,7 +1278,8 @@ class AstroInferenceModel(object):
         param: `xs`: powerlaw model parameters
         """
         state = np.logical_and(
-            xs > self.lower_prior_lim_all[-self.num_varied_astro_params:], xs < self.upper_prior_lim_all[-self.num_varied_astro_params:]
+            xs > self.lower_prior_lim_all[-self.num_varied_astro_params:], 
+            xs < self.upper_prior_lim_all[-self.num_varied_astro_params:]
         ).all()
 
         if state:
@@ -1273,33 +1343,60 @@ class AstroInferenceModel(object):
             DEweight=50,
         )
 
-    def sample(self, x0, niter, savedir, resume=True):
+    def sample(
+        self,
+        x0,
+        niter,
+        savedir,
+        resume=True,
+        seed=None,
+        sample_enterprise=False,
+        include_groups = True,
+        include_IRN_groups = False,
+    ):
         """
         A function to perform the sampling using PTMCMC
 
-        :param the initial guess `x0` of all model parameters
-        :param niter: the number of sampling iterations
-        :param savedir: the directory to save the chains
-        :param resume: do you want to resume from a saved chain?
-        """
-        if not x0.any():
-            for _ in range(100):
-                x0 = self.make_initial_guess()
-                calc = self.get_lnliklihood(x0)
-                if np.isfinite(x0).all():
-                    print(f'The initial likelihood is {calc}')
-                    break
-                else:
-                    continue
-            if _ == 99:
-                print('The likelihood is ill-defined!')
-                return 0
+        :param x0:
+            the initial guess `x0` of all model parameters
 
+        :param niter: 
+            the number of sampling iterations
+
+        :param savedir:
+             the directory to save the chains
+
+        :param resume: 
+            do you want to resume from a saved chain?
+
+        :param seed: 
+            rng seed!
+
+        :param sample_enterprise: 
+            do you want to sample the internal pta object?
+
+        :param include_groups:
+            manual `groups` needed for PTMCMC
+
+        : param: include_IRN_groups
+            do you want non-GWB groups for PTMCMC?
+
+        """ 
+        if not np.any(x0):
+            x0 = self.make_initial_guess(seed)
         ndim = len(x0)
         cov = np.diag(np.ones(ndim) * 0.01**2)
+
         groups = [list(np.arange(0, ndim))]
-        nonIR_idxs = np.array(range(self.num_IR_params, x0.shape[0]))
-        [groups.append(nonIR_idxs) for ii in range(2)]
+        if include_IRN_groups:
+            IR_idxs = np.array(range(0, self.num_IR_params))
+            [groups.append(IR_idxs) for ii in range(2)]            
+        if include_groups:
+            nonIR_idxs = np.array(range(self.num_IR_params, x0.shape[0]))
+            [groups.append(nonIR_idxs) for ii in range(2)]
+            if not self.run_type_object.orf_fixed:
+                orf_idxs = np.array(range(self.run_type_object.gwb_psd_params_end_idx, ndim))
+                [groups.append(orf_idxs) for ii in range(2)]
 
         sampler = ptmcmc(
             ndim,

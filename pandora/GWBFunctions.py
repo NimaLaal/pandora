@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as jr
 from functools import lru_cache, partial
+
 try:
     from interpax import interp1d
 except ImportError:
@@ -25,21 +26,26 @@ bins_decent = (
 
 psd_low_threshold = os.environ.get("pandora_low_GWB_psd_threshold", 1e-18)
 
-def clip_psd(psd, threshold = psd_low_threshold):
-    '''
+
+def clip_psd(psd, threshold=psd_low_threshold):
+    """
     Sets the lowest possible value for PSD.
-    PSD values below the `threshold` are set 
+    PSD values below the `threshold` are set
     to the `threshold`.
-    '''
+    """
     return jnp.maximum(psd, threshold)
+
+
 ########################################################################################
 
 """
 Library for GWB PSD and ORF Functions.
 """
+
+
 @jax.jit
 def powerlaw(f, df, log10_A, gamma):
-    calc= (
+    calc = (
         df
         * 10 ** (2 * log10_A)
         / (12 * jnp.pi**2 * f[:, None] ** 3)
@@ -69,7 +75,7 @@ def turnover(f, df, log10_A, gamma, lf0, kappa, beta):
         * (f[:, None] / fref) ** ((3 - gamma) / 2)
         / (1 + (10**lf0 / f) ** kappa) ** beta
     )
-    calc = hcf**2 / 12 / jnp.pi**2 / f[:, None]**3 * df
+    calc = hcf**2 / 12 / jnp.pi**2 / f[:, None] ** 3 * df
     return clip_psd(calc)
 
 
@@ -80,13 +86,13 @@ def t_process(f, df, log10_A, gamma, alphas):
     t-process model. PSD  amplitude at each frequency
     is a fuzzy power-law.
     """
-    calc= (
+    calc = (
         df
         * 10 ** (2 * log10_A)
         / (12 * jnp.pi**2 * f[:, None] ** 3)
         * (f[:, None] / fref) ** (3 - gamma)
     )
-    return clip_psd(calc * alphas) 
+    return clip_psd(calc * alphas)
 
 
 ##############################################################################################
@@ -108,7 +114,7 @@ def turnover_knee(f, df, log10_A, gamma, lfb, lfk, kappa, delta):
         * (1.0 + (f[:, None] / 10**lfk)) ** delta
         / jnp.sqrt(1 + (10**lfb / f) ** kappa)
     )
-    calc = hcf**2 / 12 / jnp.pi**2 / f[:, None]**3 * df
+    calc = hcf**2 / 12 / jnp.pi**2 / f[:, None] ** 3 * df
     return clip_psd(calc)
 
 
@@ -129,9 +135,10 @@ def broken_powerlaw(f, df, log10_A, gamma, delta, log10_fb, kappa):
     hcf = (
         10**log10_A
         * (f[:, None] / fref) ** ((3 - gamma) / 2)
-        * (1 + (f[:, None] / 10**log10_fb) ** (1 / kappa)) ** (kappa * (gamma - delta) / 2)
+        * (1 + (f[:, None] / 10**log10_fb) ** (1 / kappa))
+        ** (kappa * (gamma - delta) / 2)
     )
-    return hcf**2 / 12 / jnp.pi**2 / f[:, None]**3 * df
+    return hcf**2 / 12 / jnp.pi**2 / f[:, None] ** 3 * df
 
 
 ##############################################################################################
@@ -177,8 +184,8 @@ def spline_orf(angle, b1, b2, b3, b4, b5, b6, b7):
     """
     Agnostic spline-interpolated spatial correlation function. Bin edges are
     placed at edges and across angular separation space.
-    Note, the bin edges are at 1e-3, 30.0, 50.0, 80.0, 100.0, 120.0, 
-    150.0, and 180.0 degrees. You need to edit this function and the global 
+    Note, the bin edges are at 1e-3, 30.0, 50.0, 80.0, 100.0, 120.0,
+    150.0, and 180.0 degrees. You need to edit this function and the global
     constant `bins_decent` manually if you want to have different bin edges.
 
     :param: params
@@ -192,7 +199,12 @@ def spline_orf(angle, b1, b2, b3, b4, b5, b6, b7):
 
     omc2_knts = (1 - jnp.cos(spl_knts_decent)) / 2
     omc2 = (1 - jnp.cos(angle)) / 2
-    interp1d(xq=omc2, xp=omc2_knts, fp=jnp.array([b1, b2, b3, b4, b5, b6, b7]), method="cubic")
+    interp1d(
+        xq=omc2,
+        xp=omc2_knts,
+        fp=jnp.array([b1, b2, b3, b4, b5, b6, b7]),
+        method="cubic",
+    )
 
 
 ##############################################################################################
@@ -201,14 +213,14 @@ def bin_orf(angle, b1, b2, b3, b4, b5, b6, b7):
     """
     Agnostic binned spatial correlation function. Bin edges are
     placed at edges and across angular separation space.
-    Note, the bin edges are at 1e-3, 30.0, 50.0, 80.0, 100.0, 120.0, 
-    150.0, and 180.0 degrees. You need to edit this function and the global 
+    Note, the bin edges are at 1e-3, 30.0, 50.0, 80.0, 100.0, 120.0,
+    150.0, and 180.0 degrees. You need to edit this function and the global
     constant `bins_decent` manually if you want to have different bin edges.
 
     :params: b1, b2, b3, b4, b5, b6, b7
         inter-pulsar correlation bin amplitudes.
 
-    :ref: 
+    :ref:
         Taylor et al. (2017), https://arxiv.org/abs/1606.09180
 
     Author: S. R. Taylor (2020)
@@ -217,8 +229,8 @@ def bin_orf(angle, b1, b2, b3, b4, b5, b6, b7):
     # TODO: try to cache this. Though, this model is very rarely used!
     # I am not sure if it deserves its own unique treatment!
     chosen_indices = jnp.digitize(angle, bins_decent) - 1
-    #chosen_indices are indices between 0 and 6 (inclusive) with 
-    #the shape equal to the number of unique pulsar pairs
+    # chosen_indices are indices between 0 and 6 (inclusive) with
+    # the shape equal to the number of unique pulsar pairs
     return jnp.array([b1, b2, b3, b4, b5, b6, b7])[chosen_indices]
 
 
@@ -226,7 +238,17 @@ def bin_orf(angle, b1, b2, b3, b4, b5, b6, b7):
 @jax.jit
 def hd_orf(angle):
     """HD correlation function."""
-    return 3/2*( (1/3 + ((1-jnp.cos(angle))/2) * (jnp.log((1-jnp.cos(angle))/2) - 1/6)))
+    return (
+        3
+        / 2
+        * (
+            (
+                1 / 3
+                + ((1 - jnp.cos(angle)) / 2)
+                * (jnp.log((1 - jnp.cos(angle)) / 2) - 1 / 6)
+            )
+        )
+    )
 
 
 ##############################################################################################
@@ -250,7 +272,7 @@ def gw_monopole_orf(angle):
     GW-monopole Correlations. This phenomenological correlation pattern can be
     used in Bayesian runs as the simplest type of correlations.
     Author: N. Laal (2020)
-        
+
     :ref:
         https://iopscience.iop.org/article/10.3847/2041-8213/ac401c
     """
@@ -262,7 +284,7 @@ def gw_monopole_orf(angle):
 def gw_dipole_orf(angle):
     """
     GW-dipole Correlations.
-    
+
     :ref:
         https://iopscience.iop.org/article/10.3847/2041-8213/ac401c
 
@@ -302,6 +324,7 @@ def gt_orf(angle, tau):
     """
     k = 1 / 2 * (1 - jnp.cos(angle))
     return 1 / 8 * (3 + jnp.cos(angle)) + (1 - tau) * 3 / 4 * k * jnp.log(k)
+
 
 ##############################################################################################
 @jax.jit

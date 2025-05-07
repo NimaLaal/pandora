@@ -7,65 +7,66 @@ import jax.random as jr
 
 fref = 1 / (1 * 365.25 * 24 * 60 * 60)
 
+
 class UniformPrior(object):
     """
-    A class to take care of prior and the phi-matrix construction based 
+    A class to take care of prior and the phi-matrix construction based
     on log-uniform priors.
     NOTE: this class is for achromatic IRN + GWB
 
-    :param gwb_psd_func: 
+    :param gwb_psd_func:
         a PSD function from the `GWBFunctions` class
 
-    :param orf_func: 
+    :param orf_func:
         an orf function from the `GWBFunctions` class
 
-    :param crn_bins: 
+    :param crn_bins:
         number of frequency-bins for the GWB
 
-    :param int_bins: 
+    :param int_bins:
         number of frequency-bins for the non-GWB (IRN) red noise
 
-    :param `f_common`: 
+    :param `f_common`:
         an array of frequency-bins for the common process in Hz
 
-    :param `f_intrin`: 
+    :param `f_intrin`:
         an array of frequency-bins for the IRN process in Hz
 
-    :param df: 
-        the diffence between consecutive frequency-bins. 
+    :param df:
+        the diffence between consecutive frequency-bins.
         It is usually 1/Tspan.
 
-    :param psr_pos: 
-        an array of pulsar-pair sky positions in cartesian-coordinates 
+    :param psr_pos:
+        an array of pulsar-pair sky positions in cartesian-coordinates
         (every other coordinate system is pretentious and hence not supported!)
 
-    :param Tspan: 
+    :param Tspan:
         the baseline (time-span) of the PTA in seconds
 
-    :param Npulsars: 
+    :param Npulsars:
         number of pulsars in the PTA
 
-    :param gwb_helper_dictionary: 
+    :param gwb_helper_dictionary:
         the helper dictionary from `utils.py` script
 
-    :param: first_crn_bin_index: 
+    :param: first_crn_bin_index:
         the first frequency-bin index (starting from zero) where the common proccess
         begins.
 
-    :param gamma_min: 
+    :param gamma_min:
         the lowest allowed value of the spectral-index of IRN
 
-    :param gamma_max: 
+    :param gamma_max:
         the highest allowed value of the spectral-index of IRN
 
-    :param log10A_min: 
+    :param log10A_min:
         the lowest allowed value of log10 of the amplitude of IRN
 
-    :param log10A_max: 
+    :param log10A_max:
         the highest allowed value of log10 of the amplitude of IRN
 
-    :param renorm_const: 
-        the factor by which the units are going to change. 
+    :param renorm_const:
+        the factor by which the units are going to change.
         Set it to `1` for no unit change.
 
     Author:
@@ -85,13 +86,13 @@ class UniformPrior(object):
         Tspan,
         Npulsars,
         gwb_helper_dictionary,
-        first_crn_bin_index = 0,
-        gamma_min=1.,
-        gamma_max=7.,
-        log10A_min=-18.,
-        log10A_max=-11.,
-        renorm_const=1.,
-        ):
+        first_crn_bin_index=0,
+        gamma_min=1.0,
+        gamma_max=7.0,
+        log10A_min=-18.0,
+        log10A_max=-11.0,
+        renorm_const=1.0,
+    ):
 
         # Cache some useful constants/arrays
         self.gwb_helper_dictionary = gwb_helper_dictionary
@@ -113,8 +114,12 @@ class UniformPrior(object):
         self.f_common = f_common
         self.f_intrin = f_intrin
         self.f_dm = None
-        self.GWB_fidxs = jnp.array(range(first_crn_bin_index, self.crn_bins + first_crn_bin_index))
-        self.nonGWB_fidxs = jnp.array([ii for ii in range(self.int_bins) if not ii in self.GWB_fidxs])
+        self.GWB_fidxs = jnp.array(
+            range(first_crn_bin_index, self.crn_bins + first_crn_bin_index)
+        )
+        self.nonGWB_fidxs = jnp.array(
+            [ii for ii in range(self.int_bins) if not ii in self.GWB_fidxs]
+        )
 
         # Do we need to Cholesky invert everything?
         if self.nonGWB_fidxs.any():
@@ -129,7 +134,7 @@ class UniformPrior(object):
         # Cache an identity matrix
         # This will be used to invert a triangular matrix
         self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.crn_bins, axis=0)
-        
+
         # Below, calculates the angular separation as well as their indices (between pairs of pulsars) based on
         # their positions and stores them in the memory.
         I, J = np.tril_indices(self.Npulsars)
@@ -148,17 +153,19 @@ class UniformPrior(object):
         )
         # I and J are the cross-correlation indices
         # KGW is the GWB frequency indices
-        # KIR is the non-GWB frequency indices 
+        # KIR is the non-GWB frequency indices
         # (expanded up to `Npulsars` only because of the way it will be used!)
         # DIR is the diagonal indices for the IRN process
         # These are expanded forms of the indices needed
         # for multi-dimensional array indexing
-        self.I = jnp.repeat(a[None, :], self.crn_bins, axis = 0)
-        self.J = jnp.repeat(b[None, :], self.crn_bins, axis = 0)
-        self.KGW = jnp.repeat(self.GWB_fidxs[:, None], len(a), axis = 1)
+        self.I = jnp.repeat(a[None, :], self.crn_bins, axis=0)
+        self.J = jnp.repeat(b[None, :], self.crn_bins, axis=0)
+        self.KGW = jnp.repeat(self.GWB_fidxs[:, None], len(a), axis=1)
         if self.nonGWB_fidxs.any():
-            self.DIR = jnp.repeat(self.diag_idx[None, :], len(self.nonGWB_fidxs), axis = 0)
-        self.KIR = jnp.repeat(self.nonGWB_fidxs[:, None], self.Npulsars, axis = 1)
+            self.DIR = jnp.repeat(
+                self.diag_idx[None, :], len(self.nonGWB_fidxs), axis=0
+            )
+        self.KIR = jnp.repeat(self.nonGWB_fidxs[:, None], self.Npulsars, axis=1)
 
         # Cache prior related things...
         self.logrenorm_offset = 0.5 * jnp.log10(renorm_const)
@@ -169,12 +176,16 @@ class UniformPrior(object):
 
         self.upper_prior_lim_all = jnp.zeros(self.num_IR_params)
         self.upper_prior_lim_all = self.upper_prior_lim_all.at[0::2].set(self.gamma_max)
-        self.upper_prior_lim_all = self.upper_prior_lim_all.at[1::2].set(self.log10A_max)
+        self.upper_prior_lim_all = self.upper_prior_lim_all.at[1::2].set(
+            self.log10A_max
+        )
 
         self.lower_prior_lim_all = jnp.zeros(self.num_IR_params)
         self.lower_prior_lim_all = self.lower_prior_lim_all.at[0::2].set(self.gamma_min)
-        self.lower_prior_lim_all = self.lower_prior_lim_all.at[1::2].set(self.log10A_min)
-        
+        self.lower_prior_lim_all = self.lower_prior_lim_all.at[1::2].set(
+            self.log10A_min
+        )
+
         self.upper_prior_lim_all = jnp.append(
             self.upper_prior_lim_all, gwb_helper_dictionary["gwb_psd_param_upper_lim"]
         )
@@ -189,19 +200,23 @@ class UniformPrior(object):
                 str(_)
                 for _ in inspect.signature(gwb_psd_func).parameters
                 if not "args" in str(_)
-            ][2:] #the first 2 are skipped because their are `f``, and `df``
+            ][
+                2:
+            ]  # the first 2 are skipped because their are `f``, and `df``
         )
         orf_func_signs = np.array(
             [
                 str(_)
                 for _ in inspect.signature(orf_func).parameters
                 if not "args" in str(_)
-            ][1:] #the first one is skipped because it is `angle`
+            ][
+                1:
+            ]  # the first one is skipped because it is `angle`
         )
 
         if "halflog10_rho" in psd_func_sigs:
             # The function signature of the free-spectral model
-            #is different from others. Hence, it needs its own logic.
+            # is different from others. Hence, it needs its own logic.
             self.param_value_container = jnp.zeros(self.crn_bins)
             self.gwb_psd_varied_param_indxs = jnp.array(
                 [_ for _ in range(crn_bins)], dtype=int
@@ -253,8 +268,8 @@ class UniformPrior(object):
         if "ordered_orf_model_params" in gwb_helper_dictionary:
             assertion_orf_msg = f"""Your ordering of ORF params is wrong! Check the `orf_func` signature
             The signature demands {orf_func_signs}. You supplied {gwb_helper_dictionary["ordered_orf_model_params"]}."""
-            assert (
-                np.all(gwb_helper_dictionary["ordered_orf_model_params"] == orf_func_signs)
+            assert np.all(
+                gwb_helper_dictionary["ordered_orf_model_params"] == orf_func_signs
             ), assertion_orf_msg
             self.orf_fixed = False
         else:
@@ -344,14 +359,12 @@ class UniformPrior(object):
         if self.orf_fixed:
             # Need to use multi-dimensional indexing as the array is 3D
             # and the slices are 2D
-            return phi.at[self.KGW, self.I, self.J].set(
-                self.orf_val * psd_common
-            )
+            return phi.at[self.KGW, self.I, self.J].set(self.orf_val * psd_common)
         else:
             # Need to use multi-dimensional indexing as the array is 3D
             # and the slices are 2D
             return phi.at[self.KGW, self.I, self.J].set(
-                self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx:]) * psd_common
+                self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :]) * psd_common
             )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -391,21 +404,26 @@ class UniformPrior(object):
         if self.orf_fixed:
             # Need to use multi-dimensional indexing as the array is 3D
             # and the slices are 2D
-            return phi.at[self.KGW, self.I, self.J].set(
-                self.orf_val * psd_common
-            ), psd_common
+            return (
+                phi.at[self.KGW, self.I, self.J].set(self.orf_val * psd_common),
+                psd_common,
+            )
         else:
             # Need to use multi-dimensional indexing as the array is 3D
             # and the slices are 2D
-            return phi.at[self.KGW, self.I, self.J].set(
-                self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx:]) * psd_common
-            ), psd_common
+            return (
+                phi.at[self.KGW, self.I, self.J].set(
+                    self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :])
+                    * psd_common
+                ),
+                psd_common,
+            )
 
     @partial(jax.jit, static_argnums=(0,))
     def get_phi_mat_inv(self, phi):
         """
         Constructs the phiinv-matrix based on a given phi-matrix
-        The correlated bins are treated differently from the 
+        The correlated bins are treated differently from the
         uncorrelated bins as the uncorrelated bins do not need
         a Cholesky decomposition.
 
@@ -416,18 +434,19 @@ class UniformPrior(object):
         """
         phiinv = jnp.zeros((self.int_bins, self.Npulsars, self.Npulsars))
 
-        #correlated part needs Cholesky decomposition
+        # correlated part needs Cholesky decomposition
         cp = jsp.linalg.cho_factor(phi[self.GWB_fidxs], lower=True)
         phiinv = phiinv.at[self.GWB_fidxs].set(jsp.linalg.cho_solve(cp, self._eye))
         logdet_phi = 2 * jnp.sum(jnp.log(cp[0].diagonal(axis1=-2, axis2=-1)))
 
-        #uncorrelated part needs a simple inversion
+        # uncorrelated part needs a simple inversion
         if self.separate_inversion_strat:
-            diags = phi[self.nonGWB_fidxs].diagonal(axis1 = -2, axis2 = -1)
-            return jnp.repeat(phiinv.at[self.KIR, self.DIR, self.DIR].set(1/diags), 2, axis = 0), \
-                2 * (logdet_phi + jnp.sum(jnp.log(diags)))
+            diags = phi[self.nonGWB_fidxs].diagonal(axis1=-2, axis2=-1)
+            return jnp.repeat(
+                phiinv.at[self.KIR, self.DIR, self.DIR].set(1 / diags), 2, axis=0
+            ), 2 * (logdet_phi + jnp.sum(jnp.log(diags)))
         else:
-            return jnp.repeat(phiinv, 2, axis = 0), 2 * logdet_phi
+            return jnp.repeat(phiinv, 2, axis=0), 2 * logdet_phi
 
     @partial(jax.jit, static_argnums=(0,))
     def get_lnprior(self, xs):
@@ -476,91 +495,92 @@ class UniformPrior(object):
         """
         return -8.01
 
+
 class UniformPriorDM(object):
     """
-    A class to take care of prior and the phi-matrix construction based 
+    A class to take care of prior and the phi-matrix construction based
     on uniform/log-uniform priors.
     NOTE: this class is for achromatic IRN + DM + GWB
 
-    :param gwb_psd_func: 
+    :param gwb_psd_func:
         a PSD function from the `GWBFunctions` class
 
-    :param orf_func: 
+    :param orf_func:
         an orf function from the `GWBFunctions` class
 
-    :param crn_bins: 
+    :param crn_bins:
         number of frequency-bins for the GWB
 
-    :param int_bins: 
+    :param int_bins:
         number of frequency-bins for the non-GWB (IRN) red noise
 
-    :param dm_bins: 
+    :param dm_bins:
         number of frequency-bins for the dm
 
-    :param `f_common`: 
+    :param `f_common`:
         an array of frequency-bins for the common process in Hz
 
-    :param `f_intrin`: 
+    :param `f_intrin`:
         an array of frequency-bins for the IRN process in Hz
 
-    :param `f_dm`: 
+    :param `f_dm`:
         an array of frequency-bins for the dm process in Hz
 
-    :param df: 
-        the diffence between consecutive frequency-bins. 
+    :param df:
+        the diffence between consecutive frequency-bins.
         It is usually 1/Tspan.
 
-    :param psr_pos: 
-        an array of pulsar-pair sky positions in cartesian-coordinates 
+    :param psr_pos:
+        an array of pulsar-pair sky positions in cartesian-coordinates
         (every other coordinate system is pretentious and hence not supported!)
 
-    :param Tspan: 
+    :param Tspan:
         the baseline (time-span) of the PTA in seconds
 
-    :param Npulsars: 
+    :param Npulsars:
         number of pulsars in the PTA
 
-    :param gwb_helper_dictionary: 
+    :param gwb_helper_dictionary:
         the helper dictionary from `utils.py` script
 
-    :param: first_crn_bin_index: 
+    :param: first_crn_bin_index:
         the first frequency-bin index (starting from zero) where the common proccess
         begins.
 
-    :param: first_irn_bin_index: 
+    :param: first_irn_bin_index:
         the first frequency-bin index (starting from zero) where the IRN proccess
         begins.
 
-    :param: first_dm_bin_index: 
+    :param: first_dm_bin_index:
         the first frequency-bin index (starting from zero) where the dm proccess
         begins. Note, dm has its own basis. So, it will not interfere with GWB!
 
-    :param gamma_min: 
+    :param gamma_min:
         the lowest allowed value of the spectral-index of IRN
 
-    :param gamma_max: 
+    :param gamma_max:
         the highest allowed value of the spectral-index of IRN
 
-    :param log10A_min: 
+    :param log10A_min:
         the lowest allowed value of log10 of the amplitude of IRN
 
-    :param log10A_max: 
+    :param log10A_max:
         the highest allowed value of log10 of the amplitude of IRN
 
-    :param gamma_dm_min: 
+    :param gamma_dm_min:
         the lowest allowed value of the spectral-index of dm
 
-    :param gamma_dm_max: 
+    :param gamma_dm_max:
         the highest allowed value of the spectral-index of dm
 
-    :param log10A_dm_min: 
+    :param log10A_dm_min:
         the lowest allowed value of log10 of the amplitude of dm
 
-    :param log10A_dm_max: 
+    :param log10A_dm_max:
         the highest allowed value of log10 of the amplitude of dm
 
-    :param renorm_const: 
-        the factor by which the units are going to change. 
+    :param renorm_const:
+        the factor by which the units are going to change.
         Set it to `1` for no unit change.
 
     Author:
@@ -585,16 +605,16 @@ class UniformPriorDM(object):
         first_crn_bin_index,
         first_irn_bin_index,
         first_dm_bin_index,
-        gamma_min=1.,
-        gamma_max=7.,
-        log10A_min=-18.,
-        log10A_max=-11.,
-        gamma_dm_min=1.,
-        gamma_dm_max=7.,
-        log10A_dm_min=-18.,
-        log10A_dm_max=-11.,
-        renorm_const=1.,
-        ):
+        gamma_min=1.0,
+        gamma_max=7.0,
+        log10A_min=-18.0,
+        log10A_max=-11.0,
+        gamma_dm_min=1.0,
+        gamma_dm_max=7.0,
+        log10A_dm_min=-18.0,
+        log10A_dm_max=-11.0,
+        renorm_const=1.0,
+    ):
 
         # Cache some useful constants/arrays
         self.gwb_helper_dictionary = gwb_helper_dictionary
@@ -626,9 +646,19 @@ class UniformPriorDM(object):
         self.first_dm_bin_index = first_dm_bin_index
         self.last_dm_bin_index = first_dm_bin_index + self.dm_bins
 
-        self.DM_fidxs = jnp.array([ii for ii in range(self.first_dm_bin_index, self.last_dm_bin_index)])
-        self.GWB_fidxs = jnp.array(range(self.first_crn_bin_index, self.last_crn_bin_index))
-        self.nonGWB_fidxs = jnp.array([ii for ii in range(self.first_irn_bin_index, self.last_irn_bin_index) if not ii in self.GWB_fidxs])
+        self.DM_fidxs = jnp.array(
+            [ii for ii in range(self.first_dm_bin_index, self.last_dm_bin_index)]
+        )
+        self.GWB_fidxs = jnp.array(
+            range(self.first_crn_bin_index, self.last_crn_bin_index)
+        )
+        self.nonGWB_fidxs = jnp.array(
+            [
+                ii
+                for ii in range(self.first_irn_bin_index, self.last_irn_bin_index)
+                if not ii in self.GWB_fidxs
+            ]
+        )
 
         # Cache an identity matrix
         self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.crn_bins, axis=0)
@@ -661,21 +691,23 @@ class UniformPriorDM(object):
         )
         # I and J are the cross-correlation indices
         # KGW is the GWB frequency indices
-        # KIR is the non-GWB frequency indices 
+        # KIR is the non-GWB frequency indices
         # (expanded up to `Npulsars` only because of the way it will be used!)
         # DIR is the diagonal indices for the IRN process
         # These are expanded forms of the indices needed
         # for multi-dimensional array indexing
-        self.I = jnp.repeat(a[None, :], self.crn_bins, axis = 0)
-        self.J = jnp.repeat(b[None, :], self.crn_bins, axis = 0)
-        self.KGW = jnp.repeat(self.GWB_fidxs[:, None], len(a), axis = 1)
+        self.I = jnp.repeat(a[None, :], self.crn_bins, axis=0)
+        self.J = jnp.repeat(b[None, :], self.crn_bins, axis=0)
+        self.KGW = jnp.repeat(self.GWB_fidxs[:, None], len(a), axis=1)
         if self.nonGWB_fidxs.any():
-            self.DIR = jnp.repeat(self.diag_idx[None, :], len(self.nonGWB_fidxs), axis = 0)
-        self.KIR = jnp.repeat(self.nonGWB_fidxs[:, None], self.Npulsars, axis = 1)
+            self.DIR = jnp.repeat(
+                self.diag_idx[None, :], len(self.nonGWB_fidxs), axis=0
+            )
+        self.KIR = jnp.repeat(self.nonGWB_fidxs[:, None], self.Npulsars, axis=1)
 
-        self.DIRDM = jnp.repeat(self.diag_idx[None, :], len(self.DM_fidxs), axis = 0)
-        self.KDM = jnp.repeat(self.DM_fidxs[:, None], self.Npulsars, axis = 1)
-        
+        self.DIRDM = jnp.repeat(self.diag_idx[None, :], len(self.DM_fidxs), axis=0)
+        self.KDM = jnp.repeat(self.DM_fidxs[:, None], self.Npulsars, axis=1)
+
         # Cache prior related things...
         self.logrenorm_offset = 0.5 * jnp.log10(renorm_const)
         self.log10A_min = log10A_min + self.logrenorm_offset
@@ -688,17 +720,29 @@ class UniformPriorDM(object):
         self.gamma_dm_max = gamma_dm_max
 
         self.upper_prior_lim_all = jnp.zeros(self.num_IR_params)
-        self.upper_prior_lim_all = self.upper_prior_lim_all.at[0::4].set(self.gamma_dm_max)
-        self.upper_prior_lim_all = self.upper_prior_lim_all.at[1::4].set(self.log10A_dm_max)
+        self.upper_prior_lim_all = self.upper_prior_lim_all.at[0::4].set(
+            self.gamma_dm_max
+        )
+        self.upper_prior_lim_all = self.upper_prior_lim_all.at[1::4].set(
+            self.log10A_dm_max
+        )
         self.upper_prior_lim_all = self.upper_prior_lim_all.at[2::4].set(self.gamma_max)
-        self.upper_prior_lim_all = self.upper_prior_lim_all.at[3::4].set(self.log10A_max)
+        self.upper_prior_lim_all = self.upper_prior_lim_all.at[3::4].set(
+            self.log10A_max
+        )
 
         self.lower_prior_lim_all = jnp.zeros(self.num_IR_params)
-        self.lower_prior_lim_all = self.lower_prior_lim_all.at[0::4].set(self.gamma_dm_min)
-        self.lower_prior_lim_all = self.lower_prior_lim_all.at[1::4].set(self.log10A_dm_min)
+        self.lower_prior_lim_all = self.lower_prior_lim_all.at[0::4].set(
+            self.gamma_dm_min
+        )
+        self.lower_prior_lim_all = self.lower_prior_lim_all.at[1::4].set(
+            self.log10A_dm_min
+        )
         self.lower_prior_lim_all = self.lower_prior_lim_all.at[2::4].set(self.gamma_min)
-        self.lower_prior_lim_all = self.lower_prior_lim_all.at[3::4].set(self.log10A_min)
-        
+        self.lower_prior_lim_all = self.lower_prior_lim_all.at[3::4].set(
+            self.log10A_min
+        )
+
         self.upper_prior_lim_all = jnp.append(
             self.upper_prior_lim_all, gwb_helper_dictionary["gwb_psd_param_upper_lim"]
         )
@@ -713,19 +757,23 @@ class UniformPriorDM(object):
                 str(_)
                 for _ in inspect.signature(gwb_psd_func).parameters
                 if not "args" in str(_)
-            ][2:] #the first 2 are skipped because their are `f``, and `df``
+            ][
+                2:
+            ]  # the first 2 are skipped because their are `f``, and `df``
         )
         orf_func_signs = np.array(
             [
                 str(_)
                 for _ in inspect.signature(orf_func).parameters
                 if not "args" in str(_)
-            ][1:] #the first one is skipped because it is `angle`
+            ][
+                1:
+            ]  # the first one is skipped because it is `angle`
         )
 
         if "halflog10_rho" in psd_func_sigs:
             # The function signature of the free-spectral model
-            #is different from others. Hence, it needs its own logic.
+            # is different from others. Hence, it needs its own logic.
             self.param_value_container = jnp.zeros(self.crn_bins)
             self.gwb_psd_varied_param_indxs = jnp.array(
                 [_ for _ in range(crn_bins)], dtype=int
@@ -777,8 +825,8 @@ class UniformPriorDM(object):
         if "ordered_orf_model_params" in gwb_helper_dictionary:
             assertion_orf_msg = f"""Your ordering of ORF params is wrong! Check the `orf_func` signature
             The signature demands {orf_func_signs}. You supplied {gwb_helper_dictionary["ordered_orf_model_params"]}."""
-            assert (
-                np.all(gwb_helper_dictionary["ordered_orf_model_params"] == orf_func_signs)
+            assert np.all(
+                gwb_helper_dictionary["ordered_orf_model_params"] == orf_func_signs
             ), assertion_orf_msg
             self.orf_fixed = False
         else:
@@ -822,9 +870,7 @@ class UniformPriorDM(object):
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def get_phi_diag(self, log10ampIRN, gammaIRN, 
-                           log10ampDM, gammaDM,
-                           gwb_psd_params):
+    def get_phi_diag(self, log10ampIRN, gammaIRN, log10ampDM, gammaDM, gwb_psd_params):
         """
         Calculates the diagonal of the phi-matrix based on input parameters `log10amp`, `gamma`, and
         `gwb_psd_params`.
@@ -867,22 +913,32 @@ class UniformPriorDM(object):
             xs[2 : self.num_IR_params : 4],
             xs[self.num_IR_params : self.gwb_psd_params_end_idx],
         )
-        phi_dm, phi_irn, psd_common = self.get_phi_diag(log10ampIRN, gammaIRN, 
-                                                log10ampDM, gammaDM,
-                                                gwb_psd_params)
+        phi_dm, phi_irn, psd_common = self.get_phi_diag(
+            log10ampIRN, gammaIRN, log10ampDM, gammaDM, gwb_psd_params
+        )
 
         phi = jnp.zeros((self.dm_bins + self.int_bins, self.Npulsars, self.Npulsars))
-        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index, self.diag_idx, self.diag_idx].add(phi_irn)
-        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index, self.diag_idx, self.diag_idx].add(phi_dm)
-        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index, self.diag_idx, self.diag_idx].add(psd_common)
+        phi = phi.at[
+            self.first_irn_bin_index : self.last_irn_bin_index,
+            self.diag_idx,
+            self.diag_idx,
+        ].add(phi_irn)
+        phi = phi.at[
+            self.first_dm_bin_index : self.last_dm_bin_index,
+            self.diag_idx,
+            self.diag_idx,
+        ].add(phi_dm)
+        phi = phi.at[
+            self.first_crn_bin_index : self.last_crn_bin_index,
+            self.diag_idx,
+            self.diag_idx,
+        ].add(psd_common)
 
         if self.orf_fixed:
-            return phi.at[self.KGW, self.I, self.J].set(
-                self.orf_val * psd_common
-            )
+            return phi.at[self.KGW, self.I, self.J].set(self.orf_val * psd_common)
         else:
             return phi.at[self.KGW, self.I, self.J].set(
-                self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx:]) * psd_common
+                self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :]) * psd_common
             )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -902,14 +958,14 @@ class UniformPriorDM(object):
             xs[2 : self.num_IR_params : 4],
             xs[self.num_IR_params : self.gwb_psd_params_end_idx],
         )
-        phi_dm, phi_irn, psd_common = self.get_phi_diag(log10ampIRN, gammaIRN, 
-                                                log10ampDM, gammaDM,
-                                                gwb_psd_params)
+        phi_dm, phi_irn, psd_common = self.get_phi_diag(
+            log10ampIRN, gammaIRN, log10ampDM, gammaDM, gwb_psd_params
+        )
 
         phi = jnp.zeros((self.dm_bins + self.int_bins, self.Npulsars))
-        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index].add(phi_irn)
-        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index].add(phi_dm)
-        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index].add(psd_common)
+        phi = phi.at[self.first_irn_bin_index : self.last_irn_bin_index].add(phi_irn)
+        phi = phi.at[self.first_dm_bin_index : self.last_dm_bin_index].add(phi_dm)
+        phi = phi.at[self.first_crn_bin_index : self.last_crn_bin_index].add(psd_common)
         return phi, psd_common
 
     @partial(jax.jit, static_argnums=(0,))
@@ -928,29 +984,46 @@ class UniformPriorDM(object):
             xs[2 : self.num_IR_params : 4],
             xs[self.num_IR_params : self.gwb_psd_params_end_idx],
         )
-        phi_dm, phi_irn, psd_common = self.get_phi_diag(log10ampIRN, gammaIRN, 
-                                                log10ampDM, gammaDM,
-                                                gwb_psd_params)
+        phi_dm, phi_irn, psd_common = self.get_phi_diag(
+            log10ampIRN, gammaIRN, log10ampDM, gammaDM, gwb_psd_params
+        )
 
         phi = jnp.zeros((self.dm_bins + self.int_bins, self.Npulsars, self.Npulsars))
-        phi = phi.at[self.first_irn_bin_index:self.last_irn_bin_index, self.diag_idx, self.diag_idx].add(phi_irn)
-        phi = phi.at[self.first_dm_bin_index:self.last_dm_bin_index, self.diag_idx, self.diag_idx].add(phi_dm)
-        phi = phi.at[self.first_crn_bin_index:self.last_crn_bin_index, self.diag_idx, self.diag_idx].add(psd_common)
+        phi = phi.at[
+            self.first_irn_bin_index : self.last_irn_bin_index,
+            self.diag_idx,
+            self.diag_idx,
+        ].add(phi_irn)
+        phi = phi.at[
+            self.first_dm_bin_index : self.last_dm_bin_index,
+            self.diag_idx,
+            self.diag_idx,
+        ].add(phi_dm)
+        phi = phi.at[
+            self.first_crn_bin_index : self.last_crn_bin_index,
+            self.diag_idx,
+            self.diag_idx,
+        ].add(psd_common)
 
         if self.orf_fixed:
-            return phi.at[self.KGW, self.I, self.J].set(
-                self.orf_val * psd_common
-            ), psd_common
+            return (
+                phi.at[self.KGW, self.I, self.J].set(self.orf_val * psd_common),
+                psd_common,
+            )
         else:
-            return phi.at[self.KGW, self.I, self.J].set(
-                self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx:]) * psd_common
-            ), psd_common
+            return (
+                phi.at[self.KGW, self.I, self.J].set(
+                    self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :])
+                    * psd_common
+                ),
+                psd_common,
+            )
 
     @partial(jax.jit, static_argnums=(0,))
     def get_phi_mat_inv(self, phi):
         """
         Constructs the phiinv-matrix based on a given phi-matrix
-        The correlated bins are treated differently from the 
+        The correlated bins are treated differently from the
         uncorrelated bins as the uncorrelated bins do not need
         a Cholesky decomposition.
 
@@ -961,25 +1034,27 @@ class UniformPriorDM(object):
         """
         phiinv = jnp.zeros((self.dm_bins + self.int_bins, self.Npulsars, self.Npulsars))
 
-        #correlated part needs Cholesky decomposition
+        # correlated part needs Cholesky decomposition
         cp = jsp.linalg.cho_factor(phi[self.GWB_fidxs], lower=True)
         phiinv = phiinv.at[self.GWB_fidxs].set(jsp.linalg.cho_solve(cp, self._eye))
         logdet_phi = 2 * jnp.sum(jnp.log(cp[0].diagonal(axis1=-2, axis2=-1)))
-        
-        #DM part needs a simple inversion
-        diags_dm = phi[self.DM_fidxs].diagonal(axis1 = -2, axis2 = -1)
-        phiinv = phiinv.at[self.KDM, self.DIRDM, self.DIRDM].set(1/diags_dm)
 
-        #No GWB part needs a simple inversion
+        # DM part needs a simple inversion
+        diags_dm = phi[self.DM_fidxs].diagonal(axis1=-2, axis2=-1)
+        phiinv = phiinv.at[self.KDM, self.DIRDM, self.DIRDM].set(1 / diags_dm)
+
+        # No GWB part needs a simple inversion
         if self.separate_inversion_strat:
-            diags = phi[self.nonGWB_fidxs].diagonal(axis1 = -2, axis2 = -1)
-            phiinv = phiinv.at[self.KIR, self.DIR, self.DIR].set(1/diags)
-            
-            return jnp.repeat(phiinv, 2, axis = 0), \
-                2 * (logdet_phi + jnp.sum(jnp.log(diags)) + jnp.sum(jnp.log(diags_dm)))
+            diags = phi[self.nonGWB_fidxs].diagonal(axis1=-2, axis2=-1)
+            phiinv = phiinv.at[self.KIR, self.DIR, self.DIR].set(1 / diags)
+
+            return jnp.repeat(phiinv, 2, axis=0), 2 * (
+                logdet_phi + jnp.sum(jnp.log(diags)) + jnp.sum(jnp.log(diags_dm))
+            )
         else:
-            return jnp.repeat(phiinv, 2, axis = 0), \
-                2 * (logdet_phi + jnp.sum(jnp.log(diags_dm)))
+            return jnp.repeat(phiinv, 2, axis=0), 2 * (
+                logdet_phi + jnp.sum(jnp.log(diags_dm))
+            )
 
     @partial(jax.jit, static_argnums=(0,))
     def get_lnprior(self, xs):
@@ -1028,46 +1103,47 @@ class UniformPriorDM(object):
         """
         return -8.01
 
+
 class UniformPriorGwbOnly(object):
     """
-    A class to take care of prior and the phi-matrix construction based 
+    A class to take care of prior and the phi-matrix construction based
     on uniform/log-uniform priors. Only GWB is modeled.
     NOTE: this class is used for very specific purposes where there is no IRN.
     You should not be using this class if you want to model IRN.
     This class is a stripped down version of the `UniformPrior`
     class. For more documentation details, refer to `UniformPrior`.
 
-    :param gwb_psd_func: 
+    :param gwb_psd_func:
         a PSD function from the `GWBFunctions` class
 
-    :param orf_func: 
+    :param orf_func:
         an orf function from the `GWBFunctions` class
 
-    :param crn_bins: 
+    :param crn_bins:
         number of frequency-bins for the GWB
 
-    :param `f_common`: 
+    :param `f_common`:
         an array of frequency-bins for the common process in Hz
 
-    :param df: 
-        the diffence between consecutive frequency-bins. 
+    :param df:
+        the diffence between consecutive frequency-bins.
         It is usually 1/Tspan.
 
-    :param psr_pos: 
-        an array of pulsar-pair sky positions in cartesian-coordinates 
+    :param psr_pos:
+        an array of pulsar-pair sky positions in cartesian-coordinates
         (every other coordinate system is pretentious and hence not supported!)
 
-    :param Tspan: 
+    :param Tspan:
         the baseline (time-span) of the PTA in seconds
 
-    :param Npulsars: 
+    :param Npulsars:
         number of pulsars in the PTA
 
-    :param gwb_helper_dictionary: 
+    :param gwb_helper_dictionary:
         the helper dictionary from `utils.py` script
 
-    :param renorm_const: 
-        the factor by which the units are going to change. 
+    :param renorm_const:
+        the factor by which the units are going to change.
         Set it to `1` for no unit change.
 
     Author:
@@ -1085,7 +1161,7 @@ class UniformPriorGwbOnly(object):
         Tspan,
         Npulsars,
         gwb_helper_dictionary,
-        renorm_const=1.,
+        renorm_const=1.0,
     ):
         self.gwb_helper_dictionary = gwb_helper_dictionary
         self.Npulsars = Npulsars
@@ -1105,13 +1181,17 @@ class UniformPriorGwbOnly(object):
         self.logrenorm_offset = 0.5 * jnp.log10(renorm_const)
         self.ppair_number = int(self.Npulsars * (self.Npulsars - 1) * 0.5)
 
-        self.upper_prior_lim_all = jnp.array(gwb_helper_dictionary["gwb_psd_param_upper_lim"])
-        self.lower_prior_lim_all = jnp.array(gwb_helper_dictionary["gwb_psd_param_lower_lim"])
+        self.upper_prior_lim_all = jnp.array(
+            gwb_helper_dictionary["gwb_psd_param_upper_lim"]
+        )
+        self.lower_prior_lim_all = jnp.array(
+            gwb_helper_dictionary["gwb_psd_param_lower_lim"]
+        )
         self.num_IR_params = 0
 
         # Cache an identity matrix
         self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.crn_bins, axis=0)
-        
+
         # Below, calculates the angular separation as well as their indices (between pairs of pulsars) based on
         # their positions and stores them in the GPU/CPU memory.
         I, J = np.tril_indices(self.Npulsars)
@@ -1177,9 +1257,7 @@ class UniformPriorGwbOnly(object):
                     [_ for _ in range(len(psd_func_sigs))], dtype=int
                 )
 
-        self.gwb_psd_params_end_idx = len(
-            self.gwb_psd_varied_param_indxs
-        )
+        self.gwb_psd_params_end_idx = len(self.gwb_psd_varied_param_indxs)
 
         if not "halflog10_rho" in psd_func_sigs:
             assertion_psd_msg = f"""Your ordering of GWB PSD params is wrong! Check the `gwb_psd_func` signature.
@@ -1259,7 +1337,7 @@ class UniformPriorGwbOnly(object):
                 gwb_psd_params
             ),
         )
-        return psd_common, psd_common 
+        return psd_common, psd_common
 
     @partial(jax.jit, static_argnums=(0,))
     def get_phi_mat(self, xs):
@@ -1274,9 +1352,7 @@ class UniformPriorGwbOnly(object):
         phi = jnp.zeros((self.crn_bins, self.Npulsars, self.Npulsars))
         phi = phi.at[:, self.diag_idx, self.diag_idx].set(phi_diag)
         if self.orf_fixed:
-            return phi.at[:, self.I, self.J].set(
-                self.orf_val * psd_common
-            )
+            return phi.at[:, self.I, self.J].set(self.orf_val * psd_common)
         else:
             return phi.at[:, self.I, self.J].set(
                 self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :]) * psd_common
@@ -1293,7 +1369,6 @@ class UniformPriorGwbOnly(object):
         """
         return self.get_phi_diag(xs[: self.gwb_psd_params_end_idx])
 
-
     @partial(jax.jit, static_argnums=(0,))
     def get_phi_mat_and_common_psd(self, xs):
         """
@@ -1307,19 +1382,24 @@ class UniformPriorGwbOnly(object):
         phi = jnp.zeros((self.crn_bins, self.Npulsars, self.Npulsars))
         phi = phi.at[:, self.diag_idx, self.diag_idx].set(phi_diag)
         if self.orf_fixed:
-            return phi.at[: self.crn_bins, self.I, self.J].set(
-                self.orf_val * psd_common
-            ), psd_common
+            return (
+                phi.at[: self.crn_bins, self.I, self.J].set(self.orf_val * psd_common),
+                psd_common,
+            )
         else:
-            return phi.at[:, self.I, self.J].set(
-                self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :]) * psd_common
-            ), psd_common
+            return (
+                phi.at[:, self.I, self.J].set(
+                    self.orf_func(self.xi, *xs[self.gwb_psd_params_end_idx :])
+                    * psd_common
+                ),
+                psd_common,
+            )
 
     @partial(jax.jit, static_argnums=(0,))
     def get_phi_mat_inv(self, phi):
         """
         Constructs the phiinv-matrix based on a given phi-matrix
-        The correlated bins are treated differently from the 
+        The correlated bins are treated differently from the
         uncorrelated bins as the uncorrelated bins do not need
         a Cholesky decomposition.
 
@@ -1331,7 +1411,7 @@ class UniformPriorGwbOnly(object):
         cp = jsp.linalg.cho_factor(phi, lower=True)
         phiinv = jsp.linalg.cho_solve(cp, self._eye)
         logdet_phi = 4 * jnp.sum(jnp.log(cp[0].diagonal(axis1=-2, axis2=-1)))
-        return jnp.repeat(phiinv, 2, axis = 0), logdet_phi
+        return jnp.repeat(phiinv, 2, axis=0), logdet_phi
 
     @partial(jax.jit, static_argnums=(0,))
     def get_lnprior(self, xs):

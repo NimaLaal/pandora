@@ -87,13 +87,19 @@ def fixed_gamma_hd_pl(renorm_const, lower_amp=-18.0, upper_amp=-11.0):
         ),
     )
 
+
 ##############################################################################################
 
 
-def broken_pl(renorm_const, lower_amp=-18.0, upper_amp=-11.0, 
-                                         lower_gamma = 0., upper_gamma = 7.,
-                                         lower_log10_fb = -8.7, upper_log10_fb = -7.
-                            ):
+def broken_pl(
+    renorm_const,
+    lower_amp=-18.0,
+    upper_amp=-11.0,
+    lower_gamma=0.0,
+    upper_gamma=7.0,
+    lower_log10_fb=-8.7,
+    upper_log10_fb=-7.0,
+):
     """
     A lazy way to get the right `param_order_help` dictionary for a fixed gamma HD model
     """
@@ -112,16 +118,21 @@ def broken_pl(renorm_const, lower_amp=-18.0, upper_amp=-11.0,
         chosen_orf_model,
         param_order_help(
             list_of_psd_params=chosen_psd_model_params,
-            lower_bound_array=jnp.array([lower_amp + logamp_offset, lower_gamma, lower_log10_fb]),
-            upper_bound_array=jnp.array([upper_amp + logamp_offset, upper_gamma, upper_log10_fb]),
+            lower_bound_array=jnp.array(
+                [lower_amp + logamp_offset, lower_gamma, lower_log10_fb]
+            ),
+            upper_bound_array=jnp.array(
+                [upper_amp + logamp_offset, upper_gamma, upper_log10_fb]
+            ),
             fixed_gwb_psd_params=["delta", "kappa"],
-            fixed_gwb_psd_param_values=jnp.array([0., 0.1]),
+            fixed_gwb_psd_param_values=jnp.array([0.0, 0.1]),
             list_of_orf_params=[],
         ),
     )
 
 
 ##############################################################################################
+
 
 def varied_gamma_hd_pl(
     renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
@@ -262,14 +273,14 @@ def varied_gamma_bin_orf_pl(
                 [
                     lower_amp + logamp_offset,
                     lower_gamma,
-                    *jnp.ones(len(GWBFunctions.bins_decent)-1) * -1.0,
+                    *jnp.ones(len(GWBFunctions.bins_decent) - 1) * -1.0,
                 ]
             ),
             upper_bound_array=jnp.array(
                 [
                     upper_amp + logamp_offset,
                     upper_gamma,
-                    *jnp.ones(len(GWBFunctions.bins_decent)-1) * 1.0,
+                    *jnp.ones(len(GWBFunctions.bins_decent) - 1) * 1.0,
                 ]
             ),
             fixed_gwb_psd_param_values=[],
