@@ -242,7 +242,7 @@ class ValidationHell(object):
         the quality of emulation.
 
     :param: is_conditional
-        The is flow conditional?
+        Is the flow conditional?
 
     """
 
