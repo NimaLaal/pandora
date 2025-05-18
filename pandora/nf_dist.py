@@ -35,7 +35,7 @@ class NFastroinference(object):
         will be [-B, B].
 
     :param: nf_type
-        The type of flow. One of ['theta->rho', 'rho->theta', `rho].
+        The type of flow. One of ['theta|rho', 'rho|theta', `rho].
         'theta|rho' means theta conditioned on rho, 'rho|theta' means
         rho conditioned on theta, and `rho` means unconditional flow.
 
@@ -70,9 +70,9 @@ class NFastroinference(object):
         self.half_range_gwb = half_range[rho_idxs]
         self.half_range_ast = half_range[ast_param_idxs]
         self.nf_type = nf_type
-        if self.nf_type not in ["theta->rho", "rho->theta", "rho"]:
+        if self.nf_type not in ["theta|rho", "rho|theta", "rho"]:
             raise ValueError(
-                "`nf_type` must be one of ['theta->rho', 'rho->theta', 'rho']."
+                "`nf_type` must be one of ['theta|rho', 'rho|theta', 'rho']."
             )
 
     def convert_torch_to_numpy(self, torch_tensor):
