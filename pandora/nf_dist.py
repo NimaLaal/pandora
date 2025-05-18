@@ -5,7 +5,9 @@ import pyro.distributions.transforms as T
 from pyro.nn import AutoRegressiveNN
 from pyro.nn import ConditionalAutoRegressiveNN
 import numpy as np
+import os
 import torch
+from tqdm import tqdm
 from tqdm.auto import trange
 import random
 import jax
@@ -35,7 +37,7 @@ class NFastroinference(object):
         will be [-B, B].
 
     :param: nf_type
-        The type of flow. One of ['theta|rho', 'rho|theta', `rho].
+        The type of flow. One of ['theta->rho', 'rho->theta', `rho].
         'theta|rho' means theta conditioned on rho, 'rho|theta' means
         rho conditioned on theta, and `rho` means unconditional flow.
 
@@ -300,7 +302,9 @@ class ValidationHell(object):
         diff = jnp.sqrt(p) - jnp.sqrt(q)
         return 1 / jnp.sqrt(2) * jnp.sqrt(jnp.sum(diff**2, axis=-1))
 
-    def sample_from_nf(self, ndraws, input_dim, context_samples, nf_save_path):
+    def sample_from_nf(
+        self, ndraws, input_dim, context_samples, nf_save_path, progress_bar
+    ):
         """
         :param: ndraws
             The number of sample draws from the flow object.
@@ -317,6 +321,8 @@ class ValidationHell(object):
         :param: nf_save_path
              The path to load a pickle file containing the flow object.
 
+        :param: progress_bar
+            Do you want tqdm progress bar?
         """
         nf, *_ = torch.load(
             nf_save_path,
@@ -325,11 +331,17 @@ class ValidationHell(object):
         )
         if self.is_conditional:
             gen_samples = jnp.zeros((context_samples.shape[0], input_dim, ndraws))
-            for ii in trange(
-                context_samples.shape[0],
-                colour="green",
-                desc="Validation: Sampling from NF",
-            ):
+
+            if progress_bar:
+                pbar = trange(
+                    context_samples.shape[0],
+                    colour="green",
+                    desc="Validation: Sampling from NF",
+                )
+            else:
+                pbar = range(context_samples.shape[0])
+
+            for ii in pbar:
                 gen_samples = gen_samples.at[ii].set(
                     jnp.array(
                         nf.condition(context_samples[None, ii]).sample((ndraws,)).T
@@ -368,6 +380,7 @@ class ValidationHell(object):
         upper_bounds,
         nf_save_path,
         threshold=0.02,
+        progress_bar=True,
     ):
         """
         :param: validation_histograms
@@ -401,10 +414,17 @@ class ValidationHell(object):
 
         :param: nf_save_path
             The path to a flow pickle file.
+
+        :param: progress_bar
+            Do you want tqdm progress bar?
         """
         ## First, sample from the flow
         gen_samples = self.sample_from_nf(
-            ndraws, input_dim, validation_context_samples, nf_save_path
+            ndraws,
+            input_dim,
+            validation_context_samples,
+            nf_save_path,
+            progress_bar=progress_bar,
         )
 
         ## Second, turn the samples into histograms
@@ -717,6 +737,7 @@ class NFMaker(object):
         hell_threshold=0.02,
         learning_rate=1e-4,
         patience=3,
+        progress_bar=True,
     ):
         """
         The function to train a spline flow
@@ -776,9 +797,12 @@ class NFMaker(object):
         :param: patience
             How many times should we tolerate hellinger distances not improving
             after extra training steps?
-        """
 
+        :param: progress_bar
+            Do you want tqdm progress bar?
+        """
         optimizer = torch.optim.Adam(self.modules.parameters(), lr=learning_rate)
+        # optimizer = torch.optim.AdamW(self.modules.parameters(), lr=learning_rate, weight_decay=1e-4)
 
         input_sample_size = self.chain_input.shape[0]
         if self.context_exist:
@@ -795,7 +819,12 @@ class NFMaker(object):
                 bins=val_hist_bins,
             )
 
-        for step in trange(steps, colour="blue"):
+        if progress_bar:
+            pbar = trange(steps, colour="blue")
+        else:
+            pbar = range(steps)
+
+        for step in pbar:
             try:
                 self.modules.train()
                 optimizer.zero_grad()
@@ -845,6 +874,7 @@ class NFMaker(object):
                         upper_bounds=validation_input.max(axis=-1),
                         threshold=hell_threshold,
                         nf_save_path=last_nf_saved_path,
+                        progress_bar=progress_bar,
                     )
                     # print(f'Validation decision {dec}')
                     if dec:
