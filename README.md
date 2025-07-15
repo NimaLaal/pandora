@@ -17,7 +17,7 @@ Perform various real data set GWB detection analyses the fastest way possible gi
 ### Installing
 To install with ```enterprise``` on Debian:
 ```
-conda create -n pandora python=3.11
+conda create -n pandora python
 conda activate pandora
 sudo apt-get install libsuitesparse-dev
 pip install scikit-sparse==0.4.13
@@ -27,7 +27,7 @@ pip install git+https://github.com/NimaLaal/pandora.git
 ```
 To install without enterprise
 ```
-conda create -n pandora python=3.11
+conda create -n pandora python
 conda activate pandora
 pip install git+https://github.com/NimaLaal/pandora.git
 ```
