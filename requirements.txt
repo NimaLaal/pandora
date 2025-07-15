@@ -13,4 +13,5 @@ torch
 tqdm
 zuko
 joblib
+tqdm_joblib
 natsort
