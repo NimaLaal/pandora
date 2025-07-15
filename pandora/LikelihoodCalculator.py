@@ -1053,6 +1053,7 @@ class AstroInferenceModel(object):
         # NF-related objects
         self.astro_additional_prior_func = astro_additional_prior_func
         self.nf_dist = nf_dist
+        self.nf_type = nf_dist.nf_type
         self.num_astro_params = num_astro_params
 
         # Cache some usefull arrays/indices
@@ -1244,9 +1245,13 @@ class AstroInferenceModel(object):
         half_common_log10_rho = (
             np.array(0.5 * jnp.log10(psd_common.T)) - self.log_offset
         )
-        lik1 = self.nf_dist.log_prob(half_common_log10_rho, astro_params)
-        return np.array(lik0) + lik1 + self.astro_additional_prior_func(xs[-self.num_varied_astro_params :])
-
+        try:
+            lik1 = self.nf_dist.log_prob(half_common_log10_rho, astro_params[None])
+            return np.array(lik0) + lik1 + self.astro_additional_prior_func(xs[-self.num_varied_astro_params :])
+        except AssertionError:
+            print('ARQS Sampling Problem!!!')
+            return -np.inf
+       
     def get_lnprior(self, xs):
         """
         A function to return natural log prior (uniform)
@@ -1314,10 +1319,13 @@ class AstroInferenceModel(object):
         :param savedir: the directory to save the chains
         :param resume: do you want to resume from a saved chain?
         """
-        if not x0.any():
-            x0 = self.make_initial_guess()[-self.num_varied_astro_params:]
-            print(f'First lnlikelihood = {self.get_lnliklihood_fixed_spectrum(x0)}')
-            print(f'First lnlprior = {self.get_lnprior_fixed_spectrum(x0)}')
+        if resume:
+            x0 = np.loadtxt(savedir + '/chain_1.txt')[-1]
+        else:
+            if not x0.any():
+                x0 = self.make_initial_guess()[-self.num_varied_astro_params:]
+                print(f'First lnlikelihood = {self.get_lnliklihood_fixed_spectrum(x0)}')
+                print(f'First lnlprior = {self.get_lnprior_fixed_spectrum(x0)}')
         ndim = len(x0)
         print(f'The dimensionality of the parameter space is {ndim}')
         cov = np.diag(np.ones(ndim) * 0.01**2)
@@ -1348,9 +1356,9 @@ class AstroInferenceModel(object):
         x0,
         niter,
         savedir,
+        load_cov = False,
         resume=True,
         seed=None,
-        sample_enterprise=False,
         include_groups = True,
         include_IRN_groups = False,
     ):
@@ -1372,9 +1380,6 @@ class AstroInferenceModel(object):
         :param seed: 
             rng seed!
 
-        :param sample_enterprise: 
-            do you want to sample the internal pta object?
-
         :param include_groups:
             manual `groups` needed for PTMCMC
 
@@ -1385,7 +1390,10 @@ class AstroInferenceModel(object):
         if not np.any(x0):
             x0 = self.make_initial_guess(seed)
         ndim = len(x0)
-        cov = np.diag(np.ones(ndim) * 0.01**2)
+        if not load_cov:
+            cov = np.diag(np.ones(ndim) * 0.01**2)
+        else:
+            cov = np.load(savedir + '/cov.npy')
 
         groups = [list(np.arange(0, ndim))]
         if include_IRN_groups:
@@ -1493,10 +1501,24 @@ class TwoModelHyperModel(object):
     Nima Laal (02/12/2025)
     """
 
-    def __init__(self, model1, model2, log_weights = [0., 0.], device="cuda"):
+    def __init__(self, model1, model2, log_weights = [0., 0.], 
+                model_1_additional_prior_func = None,
+                model_2_additional_prior_func = None,
+                device="cuda"):
+
         self.model1 = model1
         self.model2 = model2
         self.device = device
+        if not model_1_additional_prior_func:
+             self.model_1_additional_prior_func = lambda x: 0
+        else:
+            self.model_1_additional_prior_func = model_1_additional_prior_func
+
+        if not model_2_additional_prior_func:
+             self.model_2_additional_prior_func = lambda x: 0
+        else:
+            self.model_2_additional_prior_func = model_2_additional_prior_func           
+
         self.log_weights = log_weights
 
         assert self.model1.Npulsars == self.model2.Npulsars
@@ -1613,20 +1635,20 @@ class TwoModelHyperModel(object):
                                shape = self.upper_prior_lim_all.shape)
 
 
-    def get_lnliklihood_pure_jax(self, xs):
-        """
-        Calculates the log-likelihood of a two-model HM run
+    # def get_lnliklihood_pure_jax(self, xs):
+    #     """
+    #     Calculates the log-likelihood of a two-model HM run
 
-        :param: xs: flattened array of model paraemters (`xs`)
-        """
-        nmodel = jnp.rint(xs[-1]).astype(bool)
-        idxs = self.combine_idxs[nmodel.astype(int)]
-        return jax.lax.cond(
-            nmodel,
-            self.model2.get_lnliklihood,
-            self.model1.get_lnliklihood,
-            xs[idxs],
-        )
+    #     :param: xs: flattened array of model paraemters (`xs`)
+    #     """
+    #     nmodel = jnp.rint(xs[-1]).astype(bool)
+    #     idxs = self.combine_idxs[nmodel.astype(int)]
+    #     return jax.lax.cond(
+    #         nmodel,
+    #         self.model2.get_lnliklihood,
+    #         self.model1.get_lnliklihood,
+    #         xs[idxs],
+    #     )
 
     def get_lnliklihood(self, xs):
         """
@@ -1637,9 +1659,11 @@ class TwoModelHyperModel(object):
         nmodel = round(xs[-1])
         idxs = self.combine_idxs[nmodel]
         if nmodel:
-            return self.model2.get_lnliklihood(xs[idxs]) + self.log_weights[1]
+            params = xs[idxs]
+            return self.model2.get_lnliklihood(params) + self.log_weights[1] + self.model_2_additional_prior_func(self.jax_to_numpy(params))
         else:
-            return self.model1.get_lnliklihood(xs[idxs]) + self.log_weights[0]
+            params = xs[idxs]
+            return self.model1.get_lnliklihood(params) + self.log_weights[0] + self.model_1_additional_prior_func(self.jax_to_numpy(params))
 
     def make_initial_guess(self, seed=None):
         """
@@ -1677,7 +1701,7 @@ class TwoModelHyperModel(object):
     def spit_neg_number(self):
         return -8.01
 
-    def sample(self, x0, niter, savedir, resume=True):
+    def sample(self, x0, niter, savedir, load_cov = False, resume=True):
         """
         A function to perform the sampling using PTMCMC
 
@@ -1689,7 +1713,10 @@ class TwoModelHyperModel(object):
         if not x0.any():
             x0 = self.make_initial_guess()
         ndim = len(x0)
-        cov = np.diag(np.ones(ndim) * 0.01**2)
+        if not load_cov:
+            cov = np.diag(np.ones(ndim) * 0.01**2)
+        else:
+            cov = np.load(savedir + '/cov.npy')
         groups = [list(np.arange(0, ndim))]
         nonIR_idxs = np.array(range(self.model1.num_IR_params, x0.shape[0]))
         [groups.append(nonIR_idxs) for ii in range(2)]

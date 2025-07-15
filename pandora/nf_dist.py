@@ -1,9 +1,6 @@
 import torch
 import torch.utils.dlpack as torchdlpack
-import pyro.distributions as dist
-import pyro.distributions.transforms as T
-from pyro.nn import AutoRegressiveNN
-from pyro.nn import ConditionalAutoRegressiveNN
+import zuko
 import numpy as np
 import os
 import torch
@@ -12,30 +9,32 @@ from tqdm.auto import trange
 import random
 import jax
 import jax.numpy as jnp
-
 torch.set_default_dtype(torch.float64)
 ########################Plotting Settings#########################
 import matplotlib.pyplot as plt
-
-hist_settings = dict(bins=40, histtype="step", lw=3, density=True)
-
+hist_settings = dict(
+    bins = 40,
+    histtype = 'step',
+    lw = 3,
+    density = True
+)
 
 class NFastroinference(object):
     """
     A wrapper for pyro's spline flow to make its use more
     user-friendly for astro inference purposes. The conversion
-    from the normalized domain to the real domain or from the
+    from the normalized domain to the real domain or from the 
     real domain to the normalized domain is handeled by this wrapper.
     Arrays are converted from numpy to Pytorch in this wrapper.
 
-    :param: pyro_nf_object
-        pyro's flow object
-
+    :param: nf_object
+        zuko's flow object
+    
     :param: scale
-        The positive scale where all samples are normalized to. It is
+        The positive scale where all samples are normalized to. It is 
         denoted by `B` in some scripts. The normalized interval
         will be [-B, B].
-
+    
     :param: nf_type
         The type of flow. One of ['theta->rho', 'rho->theta', `rho].
         'theta|rho' means theta conditioned on rho, 'rho|theta' means
@@ -46,8 +45,8 @@ class NFastroinference(object):
         distributions of the flow.
 
     :param: half_range
-        The half_range of the samples (i.e., (max - min)/2) used for normalizing
-        the context and the input distributions of the flow.
+        The half_range of the samples (i.e., (max - min)/2) used for normalizing 
+        the context and the input distributions of the flow.  
 
     :param: rho_idxs
         The indices that orders the GWB spectrum. For example, mean[rho_idxs]
@@ -63,25 +62,35 @@ class NFastroinference(object):
     """
 
     def __init__(
-        self, pyro_nf_object, nf_type, mean, half_range, scale, rho_idxs, ast_param_idxs
+        self, 
+        nf_object, 
+        nf_type, 
+        mean, 
+        half_range, 
+        scale, 
+        rho_idxs, 
+        ast_param_idxs,
+        nf_object_device = 'cuda',
     ):
-        self.nf = pyro_nf_object
+        self.nf = nf_object
+        self.nf_object_device = nf_object_device,
         self.B = scale
         self.mean_gwb = mean[rho_idxs]
         self.mean_ast = mean[ast_param_idxs]
         self.half_range_gwb = half_range[rho_idxs]
         self.half_range_ast = half_range[ast_param_idxs]
         self.nf_type = nf_type
-        if self.nf_type not in ["theta|rho", "rho|theta", "rho"]:
-            raise ValueError(
-                "`nf_type` must be one of ['theta|rho', 'rho|theta', 'rho']."
-            )
-
+        if self.nf_type not in ['theta|rho', 'rho|theta', 'rho']:
+            raise ValueError("`nf_type` must be one of ['theta|rho', 'rho|theta', 'rho'].")
+        
     def convert_torch_to_numpy(self, torch_tensor):
-        return torch_tensor.detach().numpy()
+        return torch_tensor.detach().cpu().numpy()
 
     def convert_numpy_to_torch(self, numpy_array):
-        return torchdlpack.from_dlpack(numpy_array.__dlpack__())
+        if self.nf_object_device == 'cpu':
+            return torchdlpack.from_dlpack(numpy_array.__dlpack__())
+        else:
+            return torch.from_numpy(numpy_array).to('cuda', non_blocking=True)
 
     def transform_rho_to_scaled_interval(self, gwb_rho):
         return self.B * (gwb_rho - self.mean_gwb) / self.half_range_gwb
@@ -99,46 +108,49 @@ class NFastroinference(object):
         scaled_gwb = self.convert_numpy_to_torch(
             self.transform_rho_to_scaled_interval(gwb_rho)
         )
-        if self.nf_type == "rho|theta":
+        if self.nf_type == 'rho|theta':
             scaled_ast = self.convert_numpy_to_torch(
                 self.transform_params_to_scaled_interval(astro_params)
             )
             return self.convert_torch_to_numpy(
-                self.nf.condition(scaled_ast).log_prob(scaled_gwb)
-            )
-        elif self.nf_type == "theta|rho":
+                self.nf(scaled_ast).log_prob(scaled_gwb)
+        )
+        elif self.nf_type == 'theta|rho':
             scaled_ast = self.convert_numpy_to_torch(
                 self.transform_params_to_scaled_interval(astro_params)
             )
             return self.convert_torch_to_numpy(
-                self.nf.condition(scaled_gwb).log_prob(scaled_ast)
-            )
-        elif self.nf_type == "rho":
-            return self.convert_torch_to_numpy(self.nf.log_prob(scaled_gwb))
+                self.nf(scaled_gwb).log_prob(scaled_ast)
+        )
+        elif self.nf_type == 'rho':
+            return self.convert_torch_to_numpy(
+                self.nf.log_prob(scaled_gwb)
+        )           
 
     def sample(self, batch_shape, context_params):
-        if self.nf_type == "rho|theta":
+        if self.nf_type == 'rho|theta':
             scaled_ast = self.convert_numpy_to_torch(
                 self.transform_params_to_scaled_interval(context_params)
             )
             scaled_gwb = self.convert_torch_to_numpy(
-                self.nf.condition(scaled_ast).sample(batch_shape)
+                self.nf(scaled_ast).sample(batch_shape)
             )
             return self.transform_rho_to_physical_interval(scaled_gwb)
-
-        elif self.nf_type == "theta|rho":
+        
+        elif self.nf_type == 'theta|rho':
             scaled_gwb = self.convert_numpy_to_torch(
                 self.transform_rho_to_scaled_interval(context_params)
             )
             scaled_ast = self.convert_torch_to_numpy(
-                self.nf.condition(scaled_gwb).sample(batch_shape)
+                self.nf(scaled_gwb).sample(batch_shape)
             )
             return self.transform_params_to_physical_interval(scaled_ast)
-
-        elif self.nf_type == "rho":
-            scaled_gwb = self.convert_torch_to_numpy(self.nf.sample(batch_shape))
+        
+        elif self.nf_type == 'rho':
+            scaled_gwb = self.convert_torch_to_numpy(
+                self.nf().sample(batch_shape)
+            )
             return self.transform_rho_to_physical_interval(scaled_gwb)
-
 
 class DataSplitter(object):
     """
@@ -146,41 +158,41 @@ class DataSplitter(object):
     """
 
     def splitter_mesh(samples, validation_sample_size, seeds):
-        """
+        '''
         :param: samples
             The samples used for validation and training
-
+        
         :param: validation_sample_size
             The number of samples per each distribution axis of `samples`
             that needs to be considered as validation.
-            Provide a numpy array with length equal to the
+            Provide a numpy array with length equal to the 
             number of distribution axes of `samples`. For example,
             if samples are form holodeck and are GWB spectrum,
             the `samples` has the shape (n_pop_draws, n_spectrum_draws, n_freqs).
             In this case, the `validation_sample_size` can be np.array([100, 200]).
             This means that 100 random samples from the first axis and 200
-            from the second axis is being splitted from `samples` to make
+            from the second axis is being splitted from `samples` to make 
             the validation set.
 
         :param: seeds
             The RNG seeds. It must be an iterator of length 2.
-        """
+        ''' 
         ndim = samples.ndim
 
         ## Looking at the distribution axes only
-        total_sample_size = np.array(samples.shape[:-1], dtype=int)
+        total_sample_size = np.array(samples.shape[:-1], dtype = int)
         training_sample_size = total_sample_size - validation_sample_size
 
         ## Randomly selecting indices
         random.seed(seeds[0])
-        v0 = random.sample(range(total_sample_size[0]), k=validation_sample_size[0])
-        bools0 = np.ones(samples.shape[0], dtype=bool)
+        v0 = random.sample(range(total_sample_size[0]), k = validation_sample_size[0])
+        bools0 = np.ones(samples.shape[0], dtype = bool)
         bools0[v0] = False
 
         if ndim == 3:
             random.seed(seeds[1])
-            v1 = random.sample(range(total_sample_size[1]), k=validation_sample_size[1])
-            bools1 = np.ones(samples.shape[1], dtype=bool)
+            v1 = random.sample(range(total_sample_size[1]), k = validation_sample_size[1])
+            bools1 = np.ones(samples.shape[1], dtype = bool)
             bools1[v1] = False
 
             validation_set = samples[np.ix_(v0, v1)]
@@ -191,22 +203,22 @@ class DataSplitter(object):
             training_set = samples[bools0]
 
         else:
-            raise ValueError("The `samples` must be 2D or 3D")
+            raise ValueError('The `samples` must be 2D or 3D')
 
         return training_set, validation_set
 
     def splitter(samples, validation_sample_size, seed):
-        """
+        '''
         :param: samples
             The samples used for validation and training
-
+        
         :param: validation_sample_size
             The number of samples to take as validation.
             This must be an integer.
 
         :param: seed
             The RNG seeds.
-        """
+        ''' 
         ndim = samples.ndim
 
         ## Looking at the distribution axes only
@@ -215,15 +227,14 @@ class DataSplitter(object):
 
         ## Randomly selecting indices
         random.seed(seed)
-        v0 = random.sample(range(total_sample_size), k=validation_sample_size)
-        bools0 = np.ones(total_sample_size, dtype=bool)
+        v0 = random.sample(range(total_sample_size), k = validation_sample_size)
+        bools0 = np.ones(total_sample_size, dtype = bool)
         bools0[v0] = False
 
         validation_set = samples[v0]
         training_set = samples[bools0]
 
         return training_set, validation_set
-
 
 class ValidationHell(object):
     """
@@ -244,17 +255,16 @@ class ValidationHell(object):
         the quality of emulation.
 
     :param: is_conditional
-        Is the flow conditional?
+        The is flow conditional?
 
     """
-
     def __init__(
         self,
         plot_save_path,
         device,
-        q=0.158,
-        is_conditional=True,
-    ):
+        q = .158,
+        is_conditional = True,
+        ):
         self.plot_save_path = plot_save_path
         self.device = device
         self.is_conditional = is_conditional
@@ -264,14 +274,22 @@ class ValidationHell(object):
         self.hell = []
         self.counter = 0
 
-    def histogram_1d(self, samples, bins, lower_bound, upper_bound):
-        """
-        A wrapper for jnp.histogram.
-        """
-        return jnp.histogram(samples, bins=bins, range=(lower_bound, upper_bound))[0]
+    def histogram_1d(self, 
+                    samples, 
+                    bins, 
+                    lower_bound, 
+                    upper_bound):
+            '''
+            A wrapper for jnp.histogram.
+            '''
+            return jnp.histogram(samples, bins = bins, range=(lower_bound, upper_bound))[0]
 
-    def batched_histogram(self, batched_samples, lower_bounds, upper_bounds, bins=15):
-        """
+    def batched_histogram(self, 
+                          batched_samples,
+                          lower_bounds,
+                          upper_bounds,
+                          bins = 15):
+        '''
         :param: batched_samples
             Samples to make histogram out of. The shape must be (batchs, features)
 
@@ -280,32 +298,35 @@ class ValidationHell(object):
 
         :param: upper_bounds
             The upper bound for the samples. The shape must be (bathces)
-
+        
         :param: bins
             The number of bins used for making histograms. It must be an int
-        """
+        '''
         vmapped_histogram = jax.vmap(self.histogram_1d, in_axes=(0, None, 0, 0))
         return vmapped_histogram(batched_samples, bins, lower_bounds, upper_bounds)
 
     def dohell(self, hist1, hist2):
-        """
+        '''
         :param: hist1
             One of the two histograms used for Hellinger distance computation.
             The shape must be (batches, bins).
 
         :param: hist2
             The other of the two histograms used for Hellinger distance computation.
-            The shape must be (batches, bins).
-        """
-        p = hist1 / hist1.sum(axis=-1)[:, None]
-        q = hist2 / hist2.sum(axis=-1)[:, None]
+            The shape must be (batches, bins).  
+        '''   
+        p = hist1/hist1.sum(axis = -1)[:, None]
+        q = hist2/hist2.sum(axis = -1)[:, None]
         diff = jnp.sqrt(p) - jnp.sqrt(q)
-        return 1 / jnp.sqrt(2) * jnp.sqrt(jnp.sum(diff**2, axis=-1))
+        return 1/jnp.sqrt(2) * jnp.sqrt(jnp.sum(diff**2, axis = -1))
 
-    def sample_from_nf(
-        self, ndraws, input_dim, context_samples, nf_save_path, progress_bar
-    ):
-        """
+    def sample_from_nf(self, 
+                        ndraws, 
+                        input_dim, 
+                        context_samples,
+                        nf_save_path,
+                        progress_bar):
+        '''
         :param: ndraws
             The number of sample draws from the flow object.
 
@@ -323,66 +344,47 @@ class ValidationHell(object):
 
         :param: progress_bar
             Do you want tqdm progress bar?
-        """
-        nf, *_ = torch.load(
-            nf_save_path,
-            map_location=self.device,
-            weights_only=False,
-        )
+        '''
+        nf, *_ = torch.load(nf_save_path, map_location = self.device,  weights_only = False,)
         if self.is_conditional:
             gen_samples = jnp.zeros((context_samples.shape[0], input_dim, ndraws))
 
             if progress_bar:
-                pbar = trange(
-                    context_samples.shape[0],
-                    colour="green",
-                    desc="Validation: Sampling from NF",
-                )
+                pbar = trange(context_samples.shape[0], colour="green", desc = "Validation: Sampling from NF")
             else:
                 pbar = range(context_samples.shape[0])
 
             for ii in pbar:
-                gen_samples = gen_samples.at[ii].set(
-                    jnp.array(
-                        nf.condition(context_samples[None, ii]).sample((ndraws,)).T
-                    )
-                )
+                gen_samples = gen_samples.at[ii].set(jnp.array(nf(context_samples[ii]).sample((ndraws, )).T))
             return gen_samples.reshape(context_samples.shape[0] * input_dim, ndraws)
         else:
-            return jnp.array(nf.sample((ndraws,)).T)
-
+            return jnp.array(nf().sample((ndraws, )).T)
+            
     def plot_hell_dist(self):
-        """
+        '''
         Plots the hellinger distance distribution and saves the output to a pdf file
-        """
+        '''
         for ct, hell in enumerate(self.hell):
-            plt.hist(
-                hell,
-                range=(0, 1),
-                **hist_settings,
-                label=f"Checkpoint {ct+1}; ll = {self.ll[ct]}; ul = {self.ul[ct]}",
-            )
-            ct += 1
+            plt.hist(hell, range = (0, 1), **hist_settings, label = f'Checkpoint {ct+1}; ll = {self.ll[ct]}; ul = {self.ul[ct]}')
+            ct+=1
         plt.legend()
-        plt.ylabel("Count")
-        plt.xlabel("Hellinger Distances")
+        plt.ylabel('Count')
+        plt.xlabel('Hellinger Distances')
         plt.tight_layout()
         plt.savefig(self.plot_save_path)
         plt.close()
 
-    def make_decision(
-        self,
-        validation_histograms,
-        validation_context_samples,
-        ndraws,
-        input_dim,
-        lower_bounds,
-        upper_bounds,
-        nf_save_path,
-        threshold=0.02,
-        progress_bar=True,
-    ):
-        """
+    def make_decision(self,
+                      validation_histograms,
+                      validation_context_samples,
+                      ndraws,
+                      input_dim,
+                      lower_bounds,
+                      upper_bounds,
+                      nf_save_path,
+                      threshold = .02,
+                      progress_bar = True):
+        '''
         :param: validation_histograms
             The pre-computed histograms from the validation set
 
@@ -400,11 +402,11 @@ class ValidationHell(object):
             considered.
 
         :param: lower_bounds
-            The lower_bounds of the histograms. The shape must be
+            The lower_bounds of the histograms. The shape must be 
             broadcastable to the number of batches.
 
         :param: upper_bounds
-            The upper_bounds of the histograms. The shape must be
+            The upper_bounds of the histograms. The shape must be 
             broadcastable to the number of batches.
 
         :param: threshold
@@ -417,31 +419,27 @@ class ValidationHell(object):
 
         :param: progress_bar
             Do you want tqdm progress bar?
-        """
+        '''
         ## First, sample from the flow
-        gen_samples = self.sample_from_nf(
-            ndraws,
-            input_dim,
-            validation_context_samples,
-            nf_save_path,
-            progress_bar=progress_bar,
-        )
-
+        gen_samples = self.sample_from_nf(ndraws, 
+                                          input_dim, 
+                                          validation_context_samples,
+                                          nf_save_path,
+                                          progress_bar = progress_bar)
+        
         ## Second, turn the samples into histograms
-        hs = self.batched_histogram(
-            gen_samples,
-            lower_bounds,
-            upper_bounds,
-            bins=validation_histograms.shape[-1],
-        )
+        hs = self.batched_histogram(gen_samples,
+                          lower_bounds,
+                          upper_bounds,
+                          bins = validation_histograms.shape[-1])
 
         ## Third, estimate the hellinger distances
         new_hell = np.array(self.dohell(validation_histograms, hs))
         self.hell.append(new_hell)
 
         ## Fourth, estimate the 1-sigma level of the hellinger distances
-        self.ll.append(np.round(np.quantile(new_hell, q=self.q), 2))
-        self.ul.append(np.round(np.quantile(new_hell, q=1 - self.q), 2))
+        self.ll.append(np.round(np.quantile(new_hell, q = self.q), 2))
+        self.ul.append(np.round(np.quantile(new_hell, q = 1 - self.q), 2))
 
         ## Fifth, plot the distances
         self.plot_hell_dist()
@@ -450,12 +448,11 @@ class ValidationHell(object):
             ## Sixth, make a decision!
             cond1 = np.abs(self.ll[-1] - self.ll[-2]) < threshold
             cond2 = np.abs(self.ul[-1] - self.ul[-2]) < threshold
-            self.counter += 1
+            self.counter+=1
             return cond1 and cond2
         else:
-            self.counter += 1
-
-
+            self.counter+=1
+            
 class NFMaker(object):
     """
     To construct and train an AQRQS normalizing flow
@@ -473,7 +470,7 @@ class NFMaker(object):
 
     :param: nf_save_dir
         The path to which the flow object will be saved
-
+    
     :param: B
         The positive scale where all samples are normalized to. The normalized interval
         will be [-B, B]. Ignored if the distributions are both normalized already
@@ -497,17 +494,17 @@ class NFMaker(object):
     """
 
     def __init__(
-        self,
+        self, 
         to_be_learned_dist,
         context_dist,
         nf_save_dir,
         normalized_interval_scale,
-        device=torch.device("cuda"),
-        spline_bins=16,
-        hidden_dims=[512] * 2,
-        start_from_loaded_nf=False,
-        path_to_load_nf=None,
-    ):
+        device = torch.device("cuda"),
+        spline_bins = 8,
+        hidden_dims = [512] * 2,
+        start_from_loaded_nf = False,
+        path_to_load_nf = None
+        ):
         ## Check to see if you have access to a GPU
         if torch.cuda.is_available():
             print("GPU is available.")
@@ -523,7 +520,7 @@ class NFMaker(object):
         self.context_axes = context_dist.ndim
 
         self.chain_context = context_dist
-        self.chain_input = to_be_learned_dist
+        self.chain_input = to_be_learned_dist  
 
         ## Do you want a conditional flow?
         self.context_exist = context_dist.any()
@@ -531,96 +528,41 @@ class NFMaker(object):
         ## Caching the trianing data and its features
         self.input_dim = to_be_learned_dist.shape[-1]
         if self.context_exist:
-            self.context_dim = context_dist.shape[-1]
+            self.context_dim = context_dist.shape[-1]   
+        else:
+            self.context_dim = 0
 
         ## Things must be Pytorch compatible!
-        self.chain_input = torch.tensor(self.chain_input, device=self.device)
-        self.chain_context = torch.tensor(self.chain_context, device=self.device)
-
-        ## A very specific choice for the spline flow. Do not change!
-        param_dims = [spline_bins, spline_bins, spline_bins - 1]
-
-        ## The base distribution of the flow
-        input_base = dist.Normal(
-            loc=torch.zeros(self.input_dim, device=device),
-            scale=torch.ones(self.input_dim, device=device),
-        )
-        ## Transform the base dist to a bounded interval smoothly
-        tanh_transform = T.TanhTransform()
-        scaling_transform = T.AffineTransform(
-            loc=torch.zeros(self.input_dim, device=device),
-            scale=torch.ones(self.input_dim, device=device) * self.B + 1,
-        )  # scale from (-1,1) to (-B-1,B+1)
+        self.chain_input = torch.tensor(self.chain_input, device = self.device)
+        self.chain_context = torch.tensor(self.chain_context, device = self.device)
 
         ## Constructing the spline flow either as a conditional or as a marginal flow
-        if self.context_exist:
-            input_hypernet = ConditionalAutoRegressiveNN(
-                self.input_dim, self.context_dim, hidden_dims, param_dims=param_dims
-            )
-            if self.device == torch.device("cuda"):
-                input_hypernet = input_hypernet.cuda()
-
-            input_transform = T.ConditionalSplineAutoregressive(
-                self.input_dim,
-                input_hypernet,
-                count_bins=spline_bins,
-                order="quadratic",
-                bound=self.B + 1,
-            )
-            if self.device == torch.device("cuda"):
-                input_transform = input_transform.cuda()
-
-        else:
-            input_hypernet = AutoRegressiveNN(
-                self.input_dim, hidden_dims, param_dims=param_dims
-            )
-            if self.device == torch.device("cuda"):
-                input_hypernet = input_hypernet.cuda()
-
-            input_transform = T.SplineAutoregressive(
-                self.input_dim,
-                input_hypernet,
-                count_bins=spline_bins,
-                order="quadratic",
-                bound=self.B + 1,
-            )
-            if self.device == torch.device("cuda"):
-                input_transform = input_transform.cuda()
-
-        ## Do you want to load a spline flow?
         if not start_from_loaded_nf:
-            if self.context_exist:
-                self.flow = dist.ConditionalTransformedDistribution(
-                    input_base, [tanh_transform, scaling_transform, input_transform]
-                )
-            else:
-                self.flow = dist.TransformedDistribution(
-                    input_base, [tanh_transform, scaling_transform, input_transform]
-                )
+            self.flow = zuko.flows.spline.NSF(
+                                                    self.input_dim,
+                                                    self.context_dim,
+                                                    bins=spline_bins,  # Number of bins for the spline
+                                                    passes=2,  # Number of passes (2 for coupling)
+                                                    hidden_features = hidden_dims
+                                                )
+
+            if self.device == torch.device("cuda"):
+                self.flow = self.flow.cuda()
         else:
-            print("Loading an NF Object...")
-            self.flow, B_loaded, *_ = torch.load(
-                path_to_load_nf,
-                map_location=self.device,
-                weights_only=False,
-            )
-            assert (
-                self.B == B_loaded
-            ), f"The normalization scaling needs to be consistent. Loaded NF gives {B_loaded} while you gave {self.B}."
-
-        self.modules = torch.nn.ModuleList([input_transform])
-
-    def sample_from_dist(
-        self,
-        batch_size,
-        input_dist,
-        context_dist,
-        repeat_input,
-        repeat_context,
-        mode="diagonal",
-        seed=None,
-    ):
-        """
+            print('Loading an NF Object...')
+            self.flow, B_loaded, *_= \
+            torch.load(path_to_load_nf, map_location = self.device,  weights_only = False,)  
+            assert self.B == B_loaded, f"The normalization scaling needs to be consistent. Loaded NF gives {B_loaded} while you gave {self.B}."
+            
+    def sample_from_dist(self,
+                         batch_size,
+                         input_dist,
+                         context_dist, 
+                         repeat_input,
+                         repeat_context,
+                         mode = 'diagonal',
+                         seed = None):
+        '''
         A function to help sample from the normalized distributions.
 
         :param: batch_size
@@ -633,76 +575,64 @@ class NFMaker(object):
             The entire context distribution
 
         :param: repeat_input
-            This choice is needed for holodeck distributions that
-            give different GWB distributions for a single population
+            This choice is needed for holodeck distributions that 
+            give different GWB distributions for a single population 
             vector. Different GWB samples can share the same population
             sample. Only relevant if `mesh` indexing is chosen.
 
         :param: repeat_context
-            This choice is needed for holodeck distributions that
-            give different GWB distributions for a single population
+            This choice is needed for holodeck distributions that 
+            give different GWB distributions for a single population 
             vector. Different GWB samples can share the same population
             sample. Only relevant if `mesh` indexing is chosen.
 
         :param: mode
-            The type of slicing done on the arrays to sample from the
-            distributions. The options are `diagonal` and 'mesh'.
+            The type of slicing done on the arrays to sample from the 
+            distributions. The options are `diagonal` and 'mesh'. 
             'mesh' uses a 2D grid to collect all the possible samples
-            from the grid while `diagonal` goes over the diagonal parts of
-            the grid.
-        """
+            from the grid while `diagonal` goes over the diagonal parts of 
+            the grid. 
+        '''
         if seed:
             random.seed(seed)
 
-        if mode == "mesh":
+        if mode == 'mesh':
 
             if self.input_axes == 3:
-                input_idxs0 = random.sample(range(input_dist.shape[0]), k=batch_size)
-                input_idxs1 = random.sample(range(input_dist.shape[1]), k=batch_size)
-                chosen_inputs = input_dist[np.ix_(input_idxs0, input_idxs1)].reshape(
-                    batch_size**2, self.input_dim
-                )
+                input_idxs0 = random.sample(range(input_dist.shape[0]), k = batch_size)
+                input_idxs1 = random.sample(range(input_dist.shape[1]), k = batch_size)
+                chosen_inputs = input_dist[np.ix_(input_idxs0, input_idxs1)].reshape(batch_size**2, self.input_dim)
             elif self.input_axes == 2:
-                input_idxs0 = random.sample(range(input_dist.shape[0]), k=batch_size)
+                input_idxs0 = random.sample(range(input_dist.shape[0]), k = batch_size)
                 chosen_inputs = input_dist[input_idxs0]
                 if repeat_input:
                     # this is very specific to holodeck
-                    chosen_inputs = torch.repeat_interleave(
-                        chosen_inputs, repeats=batch_size, dim=0
-                    )
+                    chosen_inputs = torch.repeat_interleave(chosen_inputs, repeats=batch_size, dim = 0)
 
             if self.context_exist:
                 if self.context_axes == 3:
-                    context_idxs = random.sample(
-                        range(context_dist.shape[1]), k=batch_size
-                    )
-                    chosen_contexts = context_dist[
-                        np.ix_(input_idxs0, context_idxs)
-                    ].reshape(batch_size**2, self.context_dim)
+                    context_idxs = random.sample(range(context_dist.shape[1]), k = batch_size)
+                    chosen_contexts = context_dist[np.ix_(input_idxs0, context_idxs)].reshape(batch_size**2, self.context_dim)
                 elif self.context_axes == 2:
                     chosen_contexts = context_dist[input_idxs0]
                     if repeat_context:
                         # this is very specific to holodeck
-                        chosen_contexts = torch.repeat_interleave(
-                            chosen_contexts, repeats=batch_size, dim=0
-                        )
+                        chosen_contexts = torch.repeat_interleave(chosen_contexts, repeats=batch_size, dim = 0)
             else:
                 chosen_contexts = None
 
         else:
             if self.input_axes == 3:
-                input_idxs0 = random.sample(range(input_dist.shape[0]), k=batch_size)
-                input_idxs1 = random.sample(range(input_dist.shape[1]), k=batch_size)
+                input_idxs0 = random.sample(range(input_dist.shape[0]), k = batch_size)
+                input_idxs1 = random.sample(range(input_dist.shape[1]), k = batch_size)
                 chosen_inputs = input_dist[input_idxs0, input_idxs1]
             elif self.input_axes == 2:
-                input_idxs0 = random.sample(range(input_dist.shape[0]), k=batch_size)
+                input_idxs0 = random.sample(range(input_dist.shape[0]), k = batch_size)
                 chosen_inputs = input_dist[input_idxs0]
 
             if self.context_exist:
                 if self.context_axes == 3:
-                    context_idxs = random.sample(
-                        range(context_dist.shape[1]), k=batch_size
-                    )
+                    context_idxs = random.sample(range(context_dist.shape[1]), k = batch_size)
                     chosen_contexts = context_dist[input_idxs0, context_idxs]
                 elif self.context_axes == 2:
                     chosen_contexts = context_dist[input_idxs0]
@@ -710,36 +640,34 @@ class NFMaker(object):
                 chosen_contexts = None
 
         return chosen_inputs, chosen_contexts
-
+    
     def init_validation(self):
-        """
+        '''
         Initiate the validation class
-        """
-        self.validation_class = ValidationHell(
-            plot_save_path=self.nf_save_dir + "/Hell.pdf",
-            device=self.device,
-            q=0.158,
-            is_conditional=True if self.context_exist else False,
-        )
+        '''
+        self.validation_class = ValidationHell(\
+        plot_save_path = self.nf_save_dir + '/Hell.pdf',
+        device = self.device,
+        q = 0.158,
+        is_conditional = True if self.context_exist else False)
 
-    def train(
-        self,
-        steps,
-        batch_size,
-        save_freq,
-        repeat_input,
-        repeat_context,
-        do_validation,
-        validation_input,
-        validation_context,
-        mode="diagonal",
-        val_hist_bins=15,
-        hell_threshold=0.02,
-        learning_rate=1e-4,
-        patience=3,
-        progress_bar=True,
-    ):
-        """
+    def train(self, 
+              steps,
+              batch_size,
+              save_freq,
+              repeat_input,
+              repeat_context,
+              do_validation,
+              validation_input,
+              validation_context,
+              mode = 'diagonal',
+              val_hist_bins = 15,
+              hell_threshold = .02,
+              learning_rate = 1e-4,
+              patience = 3,
+              progress_bar = True):
+        
+        '''
         The function to train a spline flow
 
         :param: steps
@@ -754,14 +682,14 @@ class NFMaker(object):
             10 times during the training. Saving overwrites!
 
         :param: repeat_input
-            This choice is needed for holodeck distributions that
-            give different GWB distributions for a single population
+            This choice is needed for holodeck distributions that 
+            give different GWB distributions for a single population 
             vector. Different GWB samples can share the same population
             sample. Only relevant if `mesh` indexing is chosen.
 
         :param: repeat_context
-            This choice is needed for holodeck distributions that
-            give different GWB distributions for a single population
+            This choice is needed for holodeck distributions that 
+            give different GWB distributions for a single population 
             vector. Different GWB samples can share the same population
             sample. Only relevant if `mesh` indexing is chosen.
 
@@ -777,11 +705,11 @@ class NFMaker(object):
             (batches, features)
 
         :param: mode
-            The type of slicing done on the arrays to sample from the
-            distributions. The options are `diagonal` and 'mesh'.
+            The type of slicing done on the arrays to sample from the 
+            distributions. The options are `diagonal` and 'mesh'. 
             'mesh' uses a 2D grid to collect all the possible samples
-            from the grid while `diagonal` goes over the diagonal parts of
-            the grid.
+            from the grid while `diagonal` goes over the diagonal parts of 
+            the grid. 
 
         :param: val_hist_bins
             The number of bins for making validation histograms
@@ -790,7 +718,7 @@ class NFMaker(object):
             The threshold under which two hellinger distance distributions
             are deemed close enough. The threshold is for the lower and upper
             `q` quantile of the two hellinger distributions.
-
+        
         :param: learning_rate
             The ADAM optimizer learning rate.
 
@@ -800,24 +728,22 @@ class NFMaker(object):
 
         :param: progress_bar
             Do you want tqdm progress bar?
-        """
-        optimizer = torch.optim.Adam(self.modules.parameters(), lr=learning_rate)
-        # optimizer = torch.optim.AdamW(self.modules.parameters(), lr=learning_rate, weight_decay=1e-4)
+        '''
+        optimizer = torch.optim.Adam(self.flow.parameters(), lr = learning_rate)
+        # optimizer = torch.optim.AdamW(self.flow.parameters(), lr=learning_rate, weight_decay=1e-4)
 
         input_sample_size = self.chain_input.shape[0]
         if self.context_exist:
             context_sample_size = self.chain_context.shape[0]
-
+        
         if do_validation:
             self.init_validation()
             one_step_towards_stoppage = 0
 
-            val_hists = self.validation_class.batched_histogram(
-                validation_input,
-                lower_bounds=validation_input.min(axis=-1),
-                upper_bounds=validation_input.max(axis=-1),
-                bins=val_hist_bins,
-            )
+            val_hists = self.validation_class.batched_histogram(validation_input,
+                          lower_bounds = validation_input.min(axis = -1),
+                          upper_bounds = validation_input.max(axis = -1),
+                          bins = val_hist_bins)
 
         if progress_bar:
             pbar = trange(steps, colour="blue")
@@ -826,61 +752,50 @@ class NFMaker(object):
 
         for step in pbar:
             try:
-                self.modules.train()
                 optimizer.zero_grad()
 
-                chosen_inputs, chosen_contexts = self.sample_from_dist(
-                    batch_size,
-                    input_dist=self.chain_input,
-                    context_dist=self.chain_context,
-                    repeat_input=repeat_input,
-                    repeat_context=repeat_context,
-                    mode=mode,
-                )
-
+                chosen_inputs, chosen_contexts = self.sample_from_dist(batch_size,
+                        input_dist = self.chain_input,
+                        context_dist = self.chain_context, 
+                        repeat_input = repeat_input,
+                        repeat_context = repeat_context,
+                        mode = mode)
+                
                 if self.context_exist:
-                    ln_p = self.flow.condition(chosen_contexts).log_prob(chosen_inputs)
+                    ln_p = self.flow(chosen_contexts).log_prob(chosen_inputs)   
                 else:
-                    ln_p = self.flow.log_prob(chosen_inputs)
+                    ln_p = self.flow().log_prob(chosen_inputs)
 
                 loss = -(ln_p).mean()
                 loss.backward()
                 optimizer.step()
-                self.flow.clear_cache()
 
             except AssertionError:
-                print("ARQS Failed. Loading from the last checkpoint...")
-                self.flow, self.B = torch.load(
-                    last_nf_saved_path,
-                    map_location=self.device,
-                    weights_only=False,
-                )
+                print('ARQS Failed. Loading from the last checkpoint...')
+                self.flow, self.B = \
+                    torch.load(last_nf_saved_path, map_location = self.device,  weights_only = False,)
                 continue
 
             if not step % save_freq and step or step == steps - 1:
-                self.modules.eval()
-                torch.save(
-                    [self.flow, self.B], self.nf_save_dir + f"/flow_{step}steps.pkl"
-                )
-                last_nf_saved_path = self.nf_save_dir + f"/flow_{step}steps.pkl"
+                torch.save([self.flow, self.B], self.nf_save_dir + f'/flow_{step}steps.pkl')
+                last_nf_saved_path = self.nf_save_dir + f'/flow_{step}steps.pkl'
 
                 if do_validation:
-                    dec = self.validation_class.make_decision(
-                        validation_histograms=val_hists,
-                        ndraws=int(1e5),
-                        input_dim=self.input_dim,
-                        validation_context_samples=validation_context,
-                        lower_bounds=validation_input.min(axis=-1),
-                        upper_bounds=validation_input.max(axis=-1),
-                        threshold=hell_threshold,
-                        nf_save_path=last_nf_saved_path,
-                        progress_bar=progress_bar,
-                    )
-                    # print(f'Validation decision {dec}')
+                    dec = self.validation_class.make_decision(validation_histograms = val_hists,
+                        ndraws = int(1e5),
+                        input_dim = self.input_dim,
+                        validation_context_samples = validation_context,
+                        lower_bounds = validation_input.min(axis = -1),
+                        upper_bounds = validation_input.max(axis = -1),
+                        threshold = hell_threshold,
+                        nf_save_path = last_nf_saved_path,
+                        progress_bar = progress_bar)
+                    #print(f'Validation decision {dec}')
                     if dec:
-                        one_step_towards_stoppage += 1
+                        one_step_towards_stoppage+=1
                     if one_step_towards_stoppage > patience:
-                        print(
-                            "Stopping the Training Early Based on Hellinger Distances."
-                        )
+                        print('Stopping the Training Early Based on Hellinger Distances.')
                         break
+
+
+
