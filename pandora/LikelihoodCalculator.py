@@ -22,43 +22,32 @@ class CURN(object):
 
     :param run_type_object: 
         a class from `models.py`
-
     :param device_to_run_likelihood_on: 
         the device (cpu, cuda, METAL) to perform likelihood calculation on.
-
     :param psrs: 
         an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
-
     :param TNr: 
         the so-called TNr matrix. It is the product of the basis matrix `F`
         with the inverse of the timing marginalized white noise covaraince
         matrix D and the timing residulas `r`.The naming convension should read 
         FD^-1r but TNr is easy to pronounce.
-
     :param TNT: 
         the so-called TNT matrix. It is the product of the basis matrix `F`
         with the inverse of the timing marginalized white noise covaraince
         matrix D and the `F` transpose matrix. The naming convension should read
         FD^-1F but TNT just sounds dynamite!
-
     :param: noise_dict: 
         the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
-
     :param: backend: 
         the telescope backend. Ignored if `TNr` and `TNT` is supplied
-
     :param: tnequad: 
         do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
-
     :param: inc_ecorr: 
         do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
-
     :param: del_pta_after_init: 
         do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
-
     :param: matrix_stabilization: 
         performing some matrix stabilization on the `TNT` matrix.
-
     :param: delta
         the amount by which the diagonal of the correlation version of TNT is added by.
         This stabilizes the TNT matrix.if `matrix_stabilization` is set to False, 
@@ -129,7 +118,6 @@ class CURN(object):
         # some details of the `pta` making process such as 
         # the form of the GWB PSD does not matter.
         if not TNr.any() and not TNT.any():
-            print('***Making an enterprise `pta` object...')
             tm = gp_signals.MarginalizingTimingModel(use_svd=True)
             wn = blocks.white_noise_block(
                 vary=False,
@@ -287,14 +275,7 @@ class CURN(object):
         param: `xs`: flattened array of model parameters
         given in the right order.
         """
-        state = np.logical_and(
-            xs > self.lower_prior_lim_all, xs < self.upper_prior_lim_all
-        ).all()
-
-        if state:
-            return -8.01
-        else:
-            return -np.inf
+        return self.run_type_object.get_lnprior_numpy(xs=xs)
 
     def make_initial_guess_numpy(self, seed=None):
         """
@@ -431,41 +412,33 @@ class MultiPulsarModel(object):
     A class to calculate the full likelihood (with correlations)
 
     :param run_type_object: 
-        a class from `models.py`
-
+        a class from `run_types.py`
     :param device_to_run_likelihood_on: 
         the device (cpu, gpu, cuda, METAL) to perform likelihood calculation on.
-
     :param psrs: 
         an enterprise `psrs` object. Ignored if `TNr` and `TNT` is supplied
-
     :param TNr: 
         the so-called TNr matrix. It is the product of the basis matrix `F`
         with the inverse of the timing marginalized white noise covaraince
         matrix D and the timing residulas `r`.The naming convension should read 
         FD^-1r but TNr is easy to pronounce.
-
     :param TNT: 
         the so-called TNT matrix. It is the product of the basis matrix `F`
         with the inverse of the timing marginalized white noise covaraince
         matrix D and the `F` transpose matrix. The naming convension should read
         FD^-1F but TNT just sounds dynamite!
-
-    :param: noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
-
+    :param: 
+        noise_dict: the white noise noise dictionary. Ignored if `TNr` and `TNT` is supplied
     :param: backend: 
         the telescope backend. Ignored if `TNr` and `TNT` is supplied
-
-    :param: tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
-
-    :param: inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
-
+    :param: 
+        tnequad: do you want to use the temponest convention?. Ignored if `TNr` and `TNT` is supplied
+    :param: 
+        inc_ecorr: do you want to use ecorr? Ignored if `TNr` and `TNT` is supplied
     :param: del_pta_after_init: 
         do you want to delete the in-house-made `pta` object? Ignored if `TNr` and `TNT` is supplied
-
     :param: matrix_stabilization: 
         performing some matrix stabilization on the `TNT` matrix.
-
     :param: delta
         the amount by which the diagonal of the correlation version of TNT is added by.
         This stabilizes the TNT matrix. If `matrix_stabilization` is set to False, this has no efect.
@@ -509,7 +482,7 @@ class MultiPulsarModel(object):
             # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.dm_bins, axis=0)
         else:
             self.kmax = 2 * self.int_bins
-            self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
+            # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
         self.k_idx = jnp.arange(0, self.kmax)
         
         # Prior related book-keeping
@@ -768,14 +741,7 @@ class MultiPulsarModel(object):
 
         :param: xs: flattened array of model paraemters (`xs`)
         """
-        state = np.logical_and(
-            xs > self.lower_prior_lim_all, xs < self.upper_prior_lim_all
-        ).all()
-
-        if state:
-            return -8.01
-        else:
-            return -np.inf
+        return self.run_type_object.get_lnprior_numpy(xs=xs)
 
     def make_initial_guess_numpy(self, seed=None):
         """
@@ -1501,24 +1467,10 @@ class TwoModelHyperModel(object):
     Nima Laal (02/12/2025)
     """
 
-    def __init__(self, model1, model2, log_weights = [0., 0.], 
-                model_1_additional_prior_func = None,
-                model_2_additional_prior_func = None,
-                device="cuda"):
-
+    def __init__(self, model1, model2, log_weights = [0., 0.], device="cuda"):
         self.model1 = model1
         self.model2 = model2
         self.device = device
-        if not model_1_additional_prior_func:
-             self.model_1_additional_prior_func = lambda x: 0
-        else:
-            self.model_1_additional_prior_func = model_1_additional_prior_func
-
-        if not model_2_additional_prior_func:
-             self.model_2_additional_prior_func = lambda x: 0
-        else:
-            self.model_2_additional_prior_func = model_2_additional_prior_func           
-
         self.log_weights = log_weights
 
         assert self.model1.Npulsars == self.model2.Npulsars
@@ -1635,20 +1587,20 @@ class TwoModelHyperModel(object):
                                shape = self.upper_prior_lim_all.shape)
 
 
-    # def get_lnliklihood_pure_jax(self, xs):
-    #     """
-    #     Calculates the log-likelihood of a two-model HM run
+    def get_lnliklihood_pure_jax(self, xs):
+        """
+        Calculates the log-likelihood of a two-model HM run
 
-    #     :param: xs: flattened array of model paraemters (`xs`)
-    #     """
-    #     nmodel = jnp.rint(xs[-1]).astype(bool)
-    #     idxs = self.combine_idxs[nmodel.astype(int)]
-    #     return jax.lax.cond(
-    #         nmodel,
-    #         self.model2.get_lnliklihood,
-    #         self.model1.get_lnliklihood,
-    #         xs[idxs],
-    #     )
+        :param: xs: flattened array of model paraemters (`xs`)
+        """
+        nmodel = jnp.rint(xs[-1]).astype(bool)
+        idxs = self.combine_idxs[nmodel.astype(int)]
+        return jax.lax.cond(
+            nmodel,
+            self.model2.get_lnliklihood,
+            self.model1.get_lnliklihood,
+            xs[idxs],
+        )
 
     def get_lnliklihood(self, xs):
         """
@@ -1659,11 +1611,9 @@ class TwoModelHyperModel(object):
         nmodel = round(xs[-1])
         idxs = self.combine_idxs[nmodel]
         if nmodel:
-            params = xs[idxs]
-            return self.model2.get_lnliklihood(params) + self.log_weights[1] + self.model_2_additional_prior_func(self.jax_to_numpy(params))
+            return self.model2.get_lnliklihood(xs[idxs]) + self.log_weights[1]
         else:
-            params = xs[idxs]
-            return self.model1.get_lnliklihood(params) + self.log_weights[0] + self.model_1_additional_prior_func(self.jax_to_numpy(params))
+            return self.model1.get_lnliklihood(xs[idxs]) + self.log_weights[0]
 
     def make_initial_guess(self, seed=None):
         """
@@ -1701,7 +1651,7 @@ class TwoModelHyperModel(object):
     def spit_neg_number(self):
         return -8.01
 
-    def sample(self, x0, niter, savedir, load_cov = False, resume=True):
+    def sample(self, x0, niter, savedir, resume=True):
         """
         A function to perform the sampling using PTMCMC
 
@@ -1713,10 +1663,7 @@ class TwoModelHyperModel(object):
         if not x0.any():
             x0 = self.make_initial_guess()
         ndim = len(x0)
-        if not load_cov:
-            cov = np.diag(np.ones(ndim) * 0.01**2)
-        else:
-            cov = np.load(savedir + '/cov.npy')
+        cov = np.diag(np.ones(ndim) * 0.01**2)
         groups = [list(np.arange(0, ndim))]
         nonIR_idxs = np.array(range(self.model1.num_IR_params, x0.shape[0]))
         [groups.append(nonIR_idxs) for ii in range(2)]
