@@ -4,9 +4,9 @@ import os
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import scipy.constants as sc
 import jax.random as jr
 from functools import lru_cache, partial
-
 try:
     from interpax import interp1d
 except ImportError:
@@ -15,6 +15,23 @@ except ImportError:
 
 ########################################################################################
 fref = 1 / (1 * 365.25 * 24 * 60 * 60)
+# physical constancts in mks
+c = sc.speed_of_light
+G = sc.gravitational_constant
+h = sc.Planck
+euler_e = 0.5772156649
+# astronomical times in sec (and frequencies in Hz)
+yr = sc.Julian_year
+day = sc.day
+fyr = 1.0 / yr
+# astronomical distances in meters
+AU = sc.astronomical_unit
+ly = sc.light_year
+pc = sc.parsec
+kpc = pc * 1.0e3
+Mpc = pc * 1.0e6
+Gpc = pc * 1.0e9
+########################################################################################
 
 spl_knts_decent = (
     jnp.array([1e-3, 25.0, 49.3, 82.5, 121.8, 150.0, 180.0]) * jnp.pi / 180.0
@@ -150,10 +167,97 @@ def powerlaw_genmodes(f, df, log10_A, gamma, wgts):
         / jnp.pi**2
         * fref ** (gamma - 3)
         * f[:, None] ** (-gamma)
-        * wgts**2
+        * wgts**2 * df
     )
     return clip_psd(calc)
 
+##############################################################################################
+@jax.jit
+def spectrum_ttvl(f, 
+                  df,
+                  p_dist,  
+                  rho_tt,
+                  rho_vl):
+    """
+    Generic powerlaw spectrum for TT + VL Case.
+    """
+
+    pdist = p_dist * kpc / c
+    orf_aa_vl = 6 * jnp.log(4 * jnp.pi * f[:, None] * pdist[None, :]) - 14 + 6 * euler_e
+
+    tt_psd = 10**(2 * rho_tt)
+    vl_psd = 10**(2 * rho_vl)
+
+    calc = tt_psd + vl_psd *  orf_aa_vl
+    return clip_psd(calc), jnp.concatenate((tt_psd[None], vl_psd[None]), axis = 0)
+
+
+##############################################################################################
+@jax.jit
+def powerlaw_ttvl(f, 
+                  df,
+                  p_dist,  
+                  log10_A_tt,
+                  gamma_tt,
+                  log10_A_vl,
+                  gamma_vl):
+    """
+    Generic powerlaw spectrum for TT + VL Case.
+    """
+
+    pdist = p_dist * kpc / c
+    orf_aa_vl = 6 * jnp.log(4 * jnp.pi * f[:, None] * pdist[None, :]) - 14 + 6 * euler_e
+
+    tt_psd = df/(12 * jnp.pi**2 * f[:, None]**3) * (10**(2 * log10_A_tt) * (f[:, None]/fref)**(3-gamma_tt))
+    vl_psd = df/(12 * jnp.pi**2 * f[:, None]**3) * (10**(2 * log10_A_vl) * (f[:, None]/fref)**(3-gamma_vl))
+
+    calc = tt_psd + vl_psd *  orf_aa_vl
+    return clip_psd(calc), jnp.concatenate((tt_psd[None], vl_psd[None]), axis = 0)
+
+
+##############################################################################################
+@jax.jit
+def powerlaw_ttstvl(f, 
+                  df,
+                  p_dist,  
+                  log10_A_tt,
+                  gamma_tt,
+                  log10_A_st,
+                  gamma_st,
+                  log10_A_vl,
+                  gamma_vl):
+    """
+    Generic powerlaw spectrum for TT + + ST + VL Case.
+    """
+
+    pdist = p_dist * kpc / c
+    orf_aa_vl = 6 * jnp.log(4 * jnp.pi * f[:, None] * pdist[None, :]) - 14 + 6 * euler_e
+
+    tt_psd = df/(12 * jnp.pi**2 * f[:, None]**3) * (10**(2 * log10_A_tt) * (f[:, None]/fref)**(3-gamma_tt))
+    st_psd = df/(12 * jnp.pi**2 * f[:, None]**3) * (10**(2 * log10_A_st) * (f[:, None]/fref)**(3-gamma_st))
+    vl_psd = df/(12 * jnp.pi**2 * f[:, None]**3) * (10**(2 * log10_A_vl) * (f[:, None]/fref)**(3-gamma_vl))
+
+    calc = tt_psd + st_psd + vl_psd *  orf_aa_vl
+    return clip_psd(calc), jnp.concatenate((tt_psd[None], st_psd[None], vl_psd[None]), axis = 0)
+
+##############################################################################################
+
+@jax.jit
+def powerlaw_ttst(f, 
+                  df,
+                  log10_A_tt,
+                  gamma_tt,
+                  log10_A_st,
+                  gamma_st):
+    """
+    Generic powerlaw spectrum for TT + ST Case.
+    """
+
+    tt_psd = df/(12 * jnp.pi**2 * f[:, None]**3) * (10**(2 * log10_A_tt) * (f[:, None]/fref)**(3-gamma_tt))
+    st_psd = df/(12 * jnp.pi**2 * f[:, None]**3) * (10**(2 * log10_A_st) * (f[:, None]/fref)**(3-gamma_st))
+
+    calc = tt_psd + st_psd
+    return clip_psd(calc), jnp.concatenate((tt_psd[None], st_psd[None]), axis = 0)
 
 ##############################################################################################
 @jax.jit
@@ -252,6 +356,34 @@ def hd_orf(angle):
 
 
 ##############################################################################################
+@jax.jit
+def tt_vl_orf(angle):
+    cos_ang  = jnp.cos(angle)
+    hd =  3/2 * ((1/3 + ((1 - cos_ang) / 2) * (jnp.log((1 - cos_ang) / 2) - 1 / 6)))
+    vl = 3 * jnp.log(2/(1-cos_ang)) - 4 * cos_ang - 3
+    return jnp.concatenate((hd[None], vl[None]), axis = 0)
+
+
+##############################################################################################
+@jax.jit
+def tt_st_vl_orf(angle):
+    cos_ang  = jnp.cos(angle)
+    hd =  3/2 * ((1/3 + ((1 - cos_ang) / 2) * (jnp.log((1 - cos_ang) / 2) - 1 / 6)))
+    st = 0.125 * (3.0 + cos_ang)
+    vl = 3 * jnp.log(2/(1-cos_ang)) - 4 * cos_ang - 3
+    return jnp.concatenate((hd[None], st[None], vl[None]), axis = 0)
+
+##############################################################################################
+
+@jax.jit
+def tt_st_orf(angle):
+    cos_ang  = jnp.cos(angle)
+    hd =  3/2 * ((1/3 + ((1 - cos_ang) / 2) * (jnp.log((1 - cos_ang) / 2) - 1 / 6)))
+    st = 0.125 * (3.0 + cos_ang)
+    return jnp.concatenate((hd[None], st[None]), axis = 0)
+
+##############################################################################################
+
 @jax.jit
 def dipole_orf(angle):
     """Dipole spatial correlation function."""

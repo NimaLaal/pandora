@@ -3,6 +3,7 @@ from pandora import GWBFunctions
 import inspect
 import jax.numpy as jnp
 import jax
+import random
 
 # jax.config.update('jax_platform_name', 'cpu')
 # jax.config.update("jax_enable_x64", False)
@@ -290,3 +291,105 @@ def varied_gamma_bin_orf_pl(
 
 
 ##############################################################################################
+
+def varied_gamma_ttvl_pl(
+    renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
+):
+    """
+    A lazy way to get the right `param_order_help` dictionary for a varied gamma HD model
+    """
+    logamp_offset = 0.5 * jnp.log10(renorm_const)
+    chosen_psd_model = GWBFunctions.powerlaw_ttvl
+    chosen_orf_model = GWBFunctions.tt_vl_orf
+    chosen_psd_model_params = np.array(
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][3:]
+    )
+    return (
+        chosen_psd_model,
+        chosen_orf_model,
+        param_order_help(
+            list_of_psd_params=chosen_psd_model_params,
+            lower_bound_array=jnp.array([lower_amp + logamp_offset, lower_gamma] * 2),
+            upper_bound_array=jnp.array([upper_amp + logamp_offset, upper_gamma] * 2),
+            fixed_gwb_psd_param_values=[],
+            list_of_orf_params=[],
+        ),
+    )
+
+
+##############################################################################################
+def varied_gamma_ttstvl_pl(
+    renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
+):
+    """
+    A lazy way to get the right `param_order_help` dictionary for a varied gamma HD model
+    """
+    logamp_offset = 0.5 * jnp.log10(renorm_const)
+    chosen_psd_model = GWBFunctions.powerlaw_ttstvl
+    chosen_orf_model = GWBFunctions.tt_st_vl_orf
+    chosen_psd_model_params = np.array(
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][3:]
+    )
+    return (
+        chosen_psd_model,
+        chosen_orf_model,
+        param_order_help(
+            list_of_psd_params=chosen_psd_model_params,
+            lower_bound_array=jnp.array([lower_amp + logamp_offset, lower_gamma] * 3),
+            upper_bound_array=jnp.array([upper_amp + logamp_offset, upper_gamma] * 3),
+            fixed_gwb_psd_param_values=[],
+            list_of_orf_params=[],
+        ),
+    )
+
+
+##############################################################################################
+def varied_gamma_ttst_pl(
+    renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
+):
+    """
+    A lazy way to get the right `param_order_help` dictionary for a varied gamma HD model
+    """
+    logamp_offset = 0.5 * jnp.log10(renorm_const)
+    chosen_psd_model = GWBFunctions.powerlaw_ttst
+    chosen_orf_model = GWBFunctions.tt_st_orf
+    chosen_psd_model_params = np.array(
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][2:]
+    )
+    return (
+        chosen_psd_model,
+        chosen_orf_model,
+        param_order_help(
+            list_of_psd_params=chosen_psd_model_params,
+            lower_bound_array=jnp.array([lower_amp + logamp_offset, lower_gamma] * 2),
+            upper_bound_array=jnp.array([upper_amp + logamp_offset, upper_gamma] * 2),
+            fixed_gwb_psd_param_values=[],
+            list_of_orf_params=[],
+        ),
+    )
+
+
+##############################################################################################
+
+def initial_guess_filter(guess_func, ln_lik_func, patience = 10):
+    seeds = random.sample(range(10000, 100000 + patience), k = patience)
+    for seed in seeds:
+        x0 = guess_func(seed = seed)
+        ans = ln_lik_func(x0)
+        if np.isfinite(ans):
+            print(f'seed = {seed}; lnlik = {ans}')
+            return x0
+        else:
+            assert np.isfinite(ans)
