@@ -73,7 +73,7 @@ class NFastroinference(object):
         nf_object_device = 'cuda',
     ):
         self.nf = nf_object
-        self.nf_object_device = nf_object_device,
+        self.nf_object_device = nf_object_device
         self.B = scale
         self.mean_gwb = mean[rho_idxs]
         self.mean_ast = mean[ast_param_idxs]
