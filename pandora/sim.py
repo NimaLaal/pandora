@@ -90,15 +90,15 @@ class SimGWBFromPhi(object):
             psrs_copy = copy.deepcopy(self.psrs)
             for pidx, psr in enumerate(psrs_copy):
 
-                psr._toas = self.toas[pidx]
-                psr._toaerrs = self.white_sigma[pidx]
+                psr._toas = np.array(self.toas[pidx])
+                psr._toaerrs = np.array(self.white_sigma[pidx])
 
                 if overwrite:
-                    psr._residuals = residual_list[pidx][rr]
+                    psr._residuals = np.array(residual_list[pidx][rr])
                 else:
-                    psr._residuals += residual_list[pidx][rr]
+                    psr._residuals += np.array(residual_list[pidx][rr])
 
-                psr._designmatrix = self.Mmat(pidx)
+                psr._designmatrix = np.array(self.Mmat(pidx))
                 psr.sort_data()
             ans.append(psrs_copy)
         return ans

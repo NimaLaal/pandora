@@ -1387,6 +1387,7 @@ class AstroInferenceModel(object):
             sampler.addProposalToCycle(self.draw_from_red_prior, 10)
         sampler.addProposalToCycle(self.draw_from_nonIR_prior, 10)
         sampler.addProposalToCycle(self.draw_from_astro_prior, 10)
+        sampler.addProposalToCycle(self.draw_from_gwb_prior, 10)
 
         sampler.sample(
             x0,
@@ -1454,6 +1455,21 @@ class AstroInferenceModel(object):
         )
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
+
+    def draw_from_gwb_prior(self, x, iter, beta):
+        """Prior draw.
+
+        The function signature is specific to PTMCMCSampler.
+        """
+
+        q = x.copy()
+        lqxy = 0
+
+        q[self.num_IR_params:self.num_IR_params + self.crn_bins] = \
+        self.nf_dist.sample(batch_shape = (1,), context_params = q[ -self.num_varied_astro_params:])[0]
+
+        return q, float(lqxy)
+    
 
 class TwoModelHyperModel(object):
     """

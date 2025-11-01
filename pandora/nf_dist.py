@@ -70,7 +70,7 @@ class NFastroinference(object):
         scale, 
         rho_idxs, 
         ast_param_idxs,
-        nf_object_device = 'cuda',
+        nf_object_device,
     ):
         self.nf = nf_object
         self.nf_object_device = nf_object_device
