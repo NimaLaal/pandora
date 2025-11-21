@@ -8,7 +8,7 @@ import scipy.constants as sc
 import jax.random as jr
 from functools import lru_cache, partial
 try:
-    from interpax import interp1d
+    from interpax import interp1d 
 except ImportError:
     pass
     # warnings.warn("The package `interpax` is needed for spline interpolation of ORF.")
@@ -170,6 +170,25 @@ def powerlaw_genmodes(f, df, log10_A, gamma, wgts):
         * wgts**2 * df
     )
     return clip_psd(calc)
+
+##############################################################################################
+@jax.jit
+def powerlaw_vl(f, 
+                df,
+                p_dist,  
+                log10_A_vl,
+                gamma_vl):
+    """
+    Generic powerlaw spectrum for VL Case.
+    """
+
+    pdist = p_dist * kpc / c
+
+    orf_aa_vl = 6 * jnp.log(4 * jnp.pi * f[:, None] * pdist[None, :]) - 14 + 6 * euler_e
+    vl_psd = df/(12 * jnp.pi**2 * f[:, None]**3) * (10**(2 * log10_A_vl) * (f[:, None]/fref)**(3-gamma_vl))
+
+    calc = vl_psd *  orf_aa_vl
+    return clip_psd(calc), vl_psd #just return the VL psd to use later in construction
 
 ##############################################################################################
 @jax.jit
@@ -354,6 +373,13 @@ def hd_orf(angle):
         )
     )
 
+##############################################################################################
+@jax.jit
+def vl_orf(angle):
+    """ VL spatial correlation function."""
+    cos_ang  = jnp.cos(angle)
+    vl = 3 * jnp.log(2/(1-cos_ang)) - 4 * cos_ang - 3
+    return vl
 
 ##############################################################################################
 @jax.jit
