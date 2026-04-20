@@ -14,7 +14,7 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as jr
-from jax.dlpack import to_dlpack, from_dlpack
+from jax.dlpack import from_dlpack
 
 class CURN(object):
     """
