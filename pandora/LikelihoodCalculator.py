@@ -1213,7 +1213,8 @@ class AstroInferenceModel(object):
         )
         try:
             lik1 = self.nf_dist.log_prob(half_common_log10_rho, astro_params[None])
-            return np.array(lik0) + lik1 + self.astro_additional_prior_func(xs[-self.num_varied_astro_params :])
+            calc = np.array(lik0) + lik1 + self.astro_additional_prior_func(xs[-self.num_varied_astro_params :])
+            return calc.squeeze()
         except AssertionError:
             print('ARQS Sampling Problem!!!')
             return -np.inf
