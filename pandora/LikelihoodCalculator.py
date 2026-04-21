@@ -14,7 +14,7 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as jr
-from jax.dlpack import to_dlpack, from_dlpack
+from jax.dlpack import from_dlpack
 
 class CURN(object):
     """
@@ -135,11 +135,11 @@ class CURN(object):
                     gamma_val=None,
                 )
             gwb = blocks.common_red_noise_block(
-                psd="spectrum",
+                psd="powerlaw",
                 prior="log-uniform",
                 Tspan=self.Tspan,
                 components=self.crn_bins,
-                gamma_val=13 / 3,
+                gamma_val=None,
                 name="gw",
                 orf="crn",
             )
@@ -194,7 +194,7 @@ class CURN(object):
         if self.device == "cpu":
             return jax.dlpack.from_dlpack(numpy_array)
         else:
-            return jnp.array(numpy_array)
+            return jax.device_put(numpy_array)
 
     def lnliklihood_wrapper_numpy(self, xs):
         xs_jax = self.numpy_to_jax(xs)
@@ -479,10 +479,10 @@ class MultiPulsarModel(object):
         self.dm_bins = run_type_object.dm_bins
         if self.dm_bins:
             self.kmax = 2 * (self.dm_bins + self.int_bins)
-            # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.dm_bins, axis=0)
+            self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.dm_bins, axis=0)
         else:
             self.kmax = 2 * self.int_bins
-            # self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
+            self._eye = jnp.repeat(np.eye(self.Npulsars)[None], self.int_bins, axis=0)
         self.k_idx = jnp.arange(0, self.kmax)
         
         # Prior related book-keeping
@@ -522,11 +522,11 @@ class MultiPulsarModel(object):
                     gamma_val=None,
                 )
             gwb = blocks.common_red_noise_block(
-                psd="spectrum",
+                psd="powerlaw",
                 prior="log-uniform",
                 Tspan=self.Tspan,
                 components=self.crn_bins,
-                gamma_val=13 / 3,
+                gamma_val=None,
                 name="gw",
                 orf="hd",
             )
@@ -589,7 +589,7 @@ class MultiPulsarModel(object):
         if self.device == "cpu":
             return jax.dlpack.from_dlpack(numpy_array)
         else:
-            return jnp.array(numpy_array)
+            return jax.device_put(numpy_array)
 
     def lnliklihood_wrapper_numpy(self, xs):
         xs_jax = self.numpy_to_jax(xs)
@@ -1206,7 +1206,7 @@ class AstroInferenceModel(object):
         """
         astro_params = self.astro_container.copy()
         astro_params[self.astro_param_varied_indices] = xs[-self.num_varied_astro_params :]
-        xs_non_astro = jnp.array(xs[: -self.num_varied_astro_params])
+        xs_non_astro = jax.device_put(xs[: -self.num_varied_astro_params])
         lik0, psd_common = self.get_lnliklihood_non_astro(xs_non_astro)
         half_common_log10_rho = (
             np.array(0.5 * jnp.log10(psd_common.T)) - self.log_offset
@@ -1463,14 +1463,17 @@ class AstroInferenceModel(object):
         """
 
         q = x.copy()
-        lqxy = 0
 
-        q[self.num_IR_params:self.num_IR_params + self.crn_bins] = \
-        self.nf_dist.sample(batch_shape = (1,), context_params = q[ -self.num_varied_astro_params:])[0]
+        astro_params = q[-self.num_varied_astro_params:][None]
+        curent_gwb_psd = x[self.num_IR_params:self.num_IR_params + self.crn_bins][None]
 
-        return q, float(lqxy)
+        future_gwb_psd = self.nf_dist.sample(batch_shape = (1,), context_params = astro_params)
+        
+        lqxy = self.nf_dist.log_prob(curent_gwb_psd, astro_params) - self.nf_dist.log_prob(future_gwb_psd, astro_params)
+        q[self.num_IR_params:self.num_IR_params + self.crn_bins] = future_gwb_psd[0]
+
+        return q, lqxy[0]
     
-
 class TwoModelHyperModel(object):
     """
     A class to perform a product-sapce sampling for two competing models.
@@ -1526,7 +1529,7 @@ class TwoModelHyperModel(object):
         if self.device == "cpu":
             return jax.dlpack.from_dlpack(numpy_array)
         else:
-            return jnp.array(numpy_array)
+            return jax.device_put(numpy_array)
 
     def lnliklihood_wrapper_numpy(self, xs):
         xs_jax = self.numpy_to_jax(xs)
@@ -1938,8 +1941,8 @@ class TwoAstroModelHyperModel(object):
 
         sampler.addProposalToCycle(self.draw_from_prior, 10)
         sampler.addProposalToCycle(self.draw_from_red_prior, 10)
-        sampler.addProposalToCycle(self.draw_from_gwb1_prior, 10)
-        sampler.addProposalToCycle(self.draw_from_gwb2_prior, 10)
+        # sampler.addProposalToCycle(self.draw_from_gwb1_prior, 10)
+        # sampler.addProposalToCycle(self.draw_from_gwb2_prior, 10)
         sampler.addProposalToCycle(self.draw_from_nmodel, 10)
         sampler.addProposalToCycle(self.draw_from_astro1_prior, 10)
         sampler.addProposalToCycle(self.draw_from_astro2_prior, 10)
@@ -1980,7 +1983,7 @@ class TwoAstroModelHyperModel(object):
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
 
-    def draw_from_gwb1_prior(self, x, iter, beta):
+    def draw_from_gwb_prior_uniform(self, x, iter, beta):
         """Prior draw.
 
         The function signature is specific to PTMCMCSampler.
@@ -1995,7 +1998,7 @@ class TwoAstroModelHyperModel(object):
         q[param_idx] = self.make_initial_guess()[param_idx]
         return q, float(lqxy)
 
-    def draw_from_gwb2_prior(self, x, iter, beta):
+    def draw_from_gwb_prior_flow(self, x, iter, beta):
         """Prior draw.
 
         The function signature is specific to PTMCMCSampler.
@@ -2011,8 +2014,9 @@ class TwoAstroModelHyperModel(object):
             + self.model1.num_astro_params
         )
         param_idx = random.randint(st, st + self.model2.num_gwb_params - 1)
-        q[param_idx] = self.make_initial_guess()[param_idx]
-        return q, float(lqxy)
+        # q[param_idx] = self.make_initial_guess()[param_idx]
+        print('DO NOT USE THIS JUMP!')
+        return None
 
     def draw_from_astro1_prior(self, x, iter, beta):
         """Prior draw.
@@ -2153,7 +2157,7 @@ class KDE(object):
         if self.device == "cpu":
             return jax.dlpack.from_dlpack(numpy_array)
         else:
-            return jnp.array(numpy_array)
+            return jax.device_put(numpy_array)
 
     def lnliklihood_wrapper_numpy(self, xs):
         xs_jax = self.numpy_to_jax(xs)
