@@ -289,6 +289,34 @@ def varied_gamma_bin_orf_pl(
         ),
     )
 
+##############################################################################################
+def varied_gamma_vl_pl(
+    renorm_const, lower_amp=-18.0, upper_amp=-11.0, lower_gamma=0.0, upper_gamma=7.0
+):
+    """
+    A lazy way to get the right `param_order_help` dictionary for a varied gamma VL model
+    """
+    logamp_offset = 0.5 * jnp.log10(renorm_const)
+    chosen_psd_model = GWBFunctions.powerlaw_vl
+    chosen_orf_model = GWBFunctions.vl_orf
+    chosen_psd_model_params = np.array(
+        [
+            str(_)
+            for _ in inspect.signature(chosen_psd_model).parameters
+            if not "args" in str(_)
+        ][3:] #skippping pulsar distances
+    )
+    return (
+        chosen_psd_model,
+        chosen_orf_model,
+        param_order_help(
+            list_of_psd_params=chosen_psd_model_params,
+            lower_bound_array=jnp.array([lower_amp + logamp_offset, lower_gamma]),
+            upper_bound_array=jnp.array([upper_amp + logamp_offset, upper_gamma]),
+            fixed_gwb_psd_param_values=[],
+            list_of_orf_params=[],
+        ),
+    )
 
 ##############################################################################################
 
