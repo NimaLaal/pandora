@@ -499,6 +499,7 @@ class MultiPulsarModel(object):
         self.num_gwb_params = len(
             self.run_type_object.lower_prior_lim_all[self.num_IR_params:]
         )
+        self.psr_names = [p.name for p in psrs] if psrs is not None and len(psrs) else None
 
         # Use the internal enterprise `pta` maker if needed.
         # Since only the TNT and TNr matricies matter,
@@ -521,12 +522,15 @@ class MultiPulsarModel(object):
                     components=self.int_bins,
                     gamma_val=None,
                 )
+            # Build the enterprise GWB block so that it matches the pandora
+            # GWB model; otherwise `pta.params` has a different length/order than `xs`.
+            ent_psd, ent_gamma_val = self._enterprise_gwb_psd()
             gwb = blocks.common_red_noise_block(
-                psd="powerlaw",
+                psd=ent_psd,
                 prior="log-uniform",
                 Tspan=self.Tspan,
                 components=self.crn_bins,
-                gamma_val=None,
+                gamma_val=ent_gamma_val,
                 name="gw",
                 orf="hd",
             )
@@ -570,6 +574,55 @@ class MultiPulsarModel(object):
             print(
                 f"Condition number of the TNT matrix after stabilizing is: {np.format_float_scientific(np.linalg.cond(self._TNT))}"
             )
+
+    def _enterprise_gwb_psd(self):
+        """
+        Pick the enterprise `common_red_noise_block` psd/gamma_val that matches
+        the pandora GWB model in `run_type_object.gwb_helper_dictionary`.
+        """
+        helper = self.run_type_object.gwb_helper_dictionary
+        varied = [str(_) for _ in helper["varied_gwb_psd_params"]]
+        if "halflog10_rho" in varied:
+            return "spectrum", None
+        if "log10_A" in varied:
+            if "gamma" in varied:
+                return "powerlaw", None
+            fixed = [str(_) for _ in helper.get("fixed_gwb_psd_params", [])]
+            return "powerlaw", float(helper["fixed_gwb_psd_param_values"][fixed.index("gamma")])
+        raise NotImplementedError(
+            f"No enterprise equivalent wired up for GWB params {varied}."
+        )
+
+    def to_enterprise_params(self, xs):
+        """
+        Map a pandora parameter vector `xs` onto the internal enterprise `pta`
+        **by name**. Do not use `pta.map_params(xs)`: enterprise sorts its params
+        alphabetically, which does not match pandora's ordering (pulsars in
+        `psrs` order, GWB params in `GWBFunctions` signature order).
+        """
+        xs = np.asarray(xs, dtype=np.float64)
+        # pandora amplitudes are in `renorm_const` units; enterprise works in seconds.
+        off = 0.5 * np.log10(self.renorm_const)
+        params = {}
+        for ii, name in enumerate(self.psr_names if self.num_IR_params else []):
+            params[f"{name}_red_noise_gamma"] = float(xs[2 * ii])
+            params[f"{name}_red_noise_log10_A"] = float(xs[2 * ii + 1]) - off
+        gw = xs[self.num_IR_params:]
+        varied = [str(_) for _ in self.run_type_object.gwb_helper_dictionary["varied_gwb_psd_params"]]
+        if "halflog10_rho" in varied:
+            params["gw_log10_rho"] = gw[: self.crn_bins] - off
+        else:
+            for name, val in zip(varied, gw):
+                params[f"gw_{name}"] = float(val) - off if name.startswith("log10_A") else float(val)
+        missing = set(self.pta.param_names) - set(params) - {"gw_log10_rho_%d" % k for k in range(self.crn_bins)}
+        assert not missing, f"Unmapped enterprise params: {sorted(missing)}"
+        return params
+
+    def enterprise_lnlikelihood_numpy(self, xs):
+        """
+        enterprise log-likelihood evaluated at a pandora-ordered parameter vector `xs`.
+        """
+        return self.pta.get_lnlikelihood(self.to_enterprise_params(xs))
 
     ##################################################################
 
@@ -833,9 +886,10 @@ class MultiPulsarModel(object):
                     resume=resume,
                 )
         else:
+            # Map pandora-ordered `xs` onto enterprise by name (enterprise sorts params alphabetically).
             sampler = ptmcmc(
                 ndim,
-                self.pta.get_lnlikelihood,
+                self.enterprise_lnlikelihood_numpy,
                 self.get_lnprior_numpy,
                 cov,
                 groups=groups,
@@ -2327,4 +2381,3 @@ class KDE(object):
         param_idx = random.randint(self.num_IR_params, x.shape[0] - 1)
         q[param_idx] = self.make_initial_guess_numpy()[param_idx]
         return q, float(lqxy)
-
